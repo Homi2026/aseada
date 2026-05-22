@@ -18,24 +18,24 @@ const verificarToken = (req, res, next) => {
 app.get('/', (req, res) => res.json({ mensaje: 'Aseada API funcionando', version: '2.0.0', db: 'PostgreSQL' }));
 app.get('/api/workers', async (req, res) => {
   try {
-    const r = await pool.query("SELECT id,nombre,email,tarifa,rating,total_servicios,activo FROM usuarios WHERE rol='worker' AND activo=true ORDER BY rating DESC");
+    const r = await pool.query("SELECT id,nombre,email,telefono,foto_url,calificacion_promedio,total_servicios,activo FROM usuarios WHERE rol='worker' AND activo=true ORDER BY calificacion_promedio DESC");
     res.json(r.rows);
   } catch(e){ res.status(500).json({error:e.message}); }
 });
 app.get('/api/disponibilidad', async (req, res) => {
   try {
-    const r = await pool.query("SELECT d.*,u.nombre as worker_nombre,u.tarifa,u.rating FROM disponibilidad d JOIN usuarios u ON d.worker_id=u.id WHERE u.activo=true ORDER BY d.id DESC");
+    const r = await pool.query("SELECT d.*,u.nombre as worker_nombre,u.calificacion_promedio FROM disponibilidad d JOIN usuarios u ON d.worker_id=u.id WHERE u.activo=true ORDER BY d.id DESC");
     res.json(r.rows);
   } catch(e){ res.status(500).json({error:e.message}); }
 });
 app.post('/auth/registro', async (req, res) => {
   try {
-    const {nombre,email,password,rol} = req.body;
+    const {nombre,email,password,rol,telefono} = req.body;
     if(!nombre||!email||!password||!rol) return res.status(400).json({error:'Faltan campos'});
     const ex = await pool.query('SELECT id FROM usuarios WHERE email=$1',[email]);
     if(ex.rows.length>0) return res.status(400).json({error:'Email ya registrado'});
     const hash = await bcrypt.hash(password,10);
-    const r = await pool.query("INSERT INTO usuarios(nombre,email,password,rol,tarifa,rating,total_servicios,activo) VALUES($1,$2,$3,$4,$5,5.0,0,true) RETURNING id,nombre,email,rol",[nombre,email,hash,rol,rol==='worker'?12000:null]);
+    const r = await pool.query("INSERT INTO usuarios(nombre,email,password,rol,telefono,calificacion_promedio,total_servicios,activo) VALUES($1,$2,$3,$4,$5,5.0,0,true) RETURNING id,nombre,email,rol",[nombre,email,hash,rol,telefono||null]);
     const token = jwt.sign({id:r.rows[0].id,email:r.rows[0].email,rol:r.rows[0].rol},JWT_SECRET,{expiresIn:'7d'});
     res.json({mensaje:'Cuenta creada',token,usuario:r.rows[0]});
   } catch(e){ res.status(500).json({error:e.message}); }
@@ -48,11 +48,11 @@ app.post('/auth/login', async (req, res) => {
     const valid = await bcrypt.compare(password,r.rows[0].password);
     if(!valid) return res.status(400).json({error:'Credenciales incorrectas'});
     const token = jwt.sign({id:r.rows[0].id,email:r.rows[0].email,rol:r.rows[0].rol},JWT_SECRET,{expiresIn:'7d'});
-    res.json({token,usuario:{id:r.rows[0].id,nombre:r.rows[0].nombre,email:r.rows[0].email,rol:r.rows[0].rol,tarifa:r.rows[0].tarifa,rating:r.rows[0].rating}});
+    res.json({token,usuario:{id:r.rows[0].id,nombre:r.rows[0].nombre,email:r.rows[0].email,rol:r.rows[0].rol,telefono:r.rows[0].telefono,calificacion_promedio:r.rows[0].calificacion_promedio}});
   } catch(e){ res.status(500).json({error:e.message}); }
 });
 app.get('/api/usuarios', verificarToken, async (req, res) => {
-  try { const r = await pool.query('SELECT id,nombre,email,rol,tarifa,rating,total_servicios,activo,fecha_registro FROM usuarios'); res.json(r.rows); }
+  try { const r = await pool.query('SELECT id,nombre,email,rol,telefono,foto_url,calificacion_promedio,total_servicios,activo FROM usuarios'); res.json(r.rows); }
   catch(e){ res.status(500).json({error:e.message}); }
 });
 app.get('/api/servicios', verificarToken, async (req, res) => {

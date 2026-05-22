@@ -10,4 +10,4 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejec
 app.use(cors());
 app.use(express.json());
 app.get('/', (req, res) => res.json({ mensaje: 'Aseada API funcionando', version: '2.0.0', db: 'PostgreSQL' }));
-app.listen(PORT, () => console.log('Aseada PostgreSQL corriendo en puerto ' + PORT));
+app.listen(PORT, '0.0.0.0', () => console.log('Aseada PostgreSQL corriendo en puerto ' + PORT));

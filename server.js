@@ -255,5 +255,28 @@ app.get('/api/fotos_servicio', verificarToken, async (req, res) => {
   try { const r = await pool.query('SELECT * FROM fotos_servicio ORDER BY id DESC'); res.json(r.rows); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
+// ─── WORKER RUTAS ────────────────────────────────────────────────────────────
+app.get('/api/worker/disponibles', verificarToken, async (req, res) => {
+  try {
+    const r = await pool.query(
+      "SELECT * FROM servicios WHERE estado='buscando_worker' ORDER BY id DESC"
+    );
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/worker/aceptar/:id', verificarToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM servicios WHERE id=$1', [req.params.id]);
+    const s = rows[0];
+    if (!s) return res.status(404).json({ error: 'Servicio no encontrado' });
+    if (s.estado !== 'buscando_worker') return res.status(400).json({ error: 'Servicio no disponible' });
+    await pool.query(
+      "UPDATE servicios SET estado='en_proceso', worker_id=$1 WHERE id=$2",
+      [req.usuario.id, req.params.id]
+    );
+    res.json({ mensaje: 'Trabajo aceptado' });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
 
 app.listen(PORT, '0.0.0.0', () => console.log('Aseada v3.0 PostgreSQL + Flow corriendo en puerto ' + PORT));

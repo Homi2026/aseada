@@ -11,6 +11,11 @@ import assert from 'node:assert/strict';
 // un `import` estatico se evaluaria antes que estas lineas.
 process.env.JWT_SECRET ||= 'secreto-solo-para-pruebas';
 process.env.DATABASE_URL ||= 'postgresql://prueba:prueba@127.0.0.1:1/prueba';
+// PUBLIC_URL puesta y las de Flow ausentes: asi el 503 de pagos tiene algo
+// que nombrar y algo que callar.
+process.env.PUBLIC_URL ||= 'https://ejemplo.test';
+delete process.env.FLOW_API_KEY;
+delete process.env.FLOW_SECRET_KEY;
 
 const { default: app } = await import('../server.js');
 
@@ -47,5 +52,23 @@ test('una ruta inexistente responde JSON con 404', async () => {
     assert.equal(res.status, 404);
     assert.match(res.headers.get('content-type'), /application\/json/);
     assert.match((await res.json()).error, /no encontrada/i);
+  });
+});
+
+test('el 503 de pagos nombra solo las variables que faltan', async () => {
+  await conServidor(async (base) => {
+    const res = await fetch(`${base}/api/pagos/crear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ servicio_id: 1 })
+    });
+
+    // exigirFlow corre antes que verificarToken, asi que el 503 llega sin token.
+    assert.equal(res.status, 503);
+    const { error } = await res.json();
+    assert.match(error, /FLOW_API_KEY/);
+    assert.match(error, /FLOW_SECRET_KEY/);
+    // PUBLIC_URL si esta configurada: mandar a revisarla desorienta.
+    assert.doesNotMatch(error, /PUBLIC_URL/);
   });
 });

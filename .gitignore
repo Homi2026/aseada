@@ -1,3 +1,8 @@
 node_modules/
-.env
+
+# Variables de entorno: cubre .env, .env.local, .env.production, etc.
+# `vercel env pull` escribe .env.local con secretos de produccion.
+.env*
+!.env.example
+
 .vercel

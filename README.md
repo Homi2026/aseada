@@ -48,9 +48,64 @@ To learn more about developing your project with Expo, look at the following res
 - [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
 - [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
 
+## Publicar Aseada en la web
+
+La aplicación ya genera una web estática lista para desplegar:
+
+```bash
+npx expo export --platform web
+```
+
+El resultado queda en `dist/`. La estructura recomendada para el producto es:
+
+- `aseada.cl`: portada pública y presentación del servicio.
+- `app.aseada.cl`: aplicación operativa con login, registro y solicitudes.
+- API web: backend serverless desplegado en `https://aseada-backend.vercel.app`, configurado en `src/constants/api.ts`.
+- Persistencia web: Vercel Blob conectado al proyecto `aseada-backend` para cuentas, servicios y notificaciones del MVP.
+
+Para una prueba local del build final:
+
+```bash
+npx serve dist -l 19012
+```
+
+Antes de publicar, configurar el dominio personalizado en el proveedor elegido y verificar que `app.aseada.cl` apunte al hosting de la carpeta `dist`. La cuenta de Instagram debe crearse manualmente con el nombre de marca disponible y luego reemplazar el enlace provisional de la portada.
+
+El backend PostgreSQL original permanece en `aseada-backend/server.js` para la futura versión móvil y pagos Flow. La web operativa usa la función serverless en `aseada-backend/api/[...path].js` mientras se termina la migración a PostgreSQL.
+
 ## Join the community
 
 Join our community of developers creating universal apps.
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+### Criterio inicial de fumigación
+
+La primera tarifa referencial busca entrar por debajo de una visita técnica completa y mantener margen para el aseador:
+
+- Insectos: desde $39.900 base.
+- Roedores: desde $49.900 base.
+- Insectos y roedores: desde $59.900 base.
+- El cliente ve además una comisión de plataforma del 20%.
+- El IVA se calcula al 19% sobre la comisión de Aseada y aparece separado en el resumen.
+
+La competencia se divide en dos grupos: empresas especializadas de control de plagas, que suelen vender visitas técnicas y tratamientos completos, y marketplaces de servicios, que compiten por rapidez y precio. Aseada puede diferenciarse combinando la confianza del marketplace con precio transparente antes de solicitar, perfiles de aseadores y seguimiento del servicio. Estas tarifas deben validarse con cotizaciones reales por comuna, costo de insumos y requisitos sanitarios antes de convertirlas en precios definitivos.
+
+### Modelo de pagos al trabajador
+
+La pantalla del aseador muestra `ganancia bruta estimada`. No debe prometer un monto neto hasta definir la relación jurídica y tributaria:
+
+- **Prestador independiente:** contrato de prestación de servicios, verificación de identidad, datos bancarios, boleta de honorarios y retención/emisión según las reglas vigentes del SII. El pago se libera después de que el servicio se marca como completado y el cliente confirma o vence un plazo de revisión.
+- **Trabajador dependiente:** contrato de trabajo, remuneración, jornada, cotizaciones previsionales, seguro de accidentes y demás obligaciones laborales. En este modelo Aseada debe operar como empleador o mediante una empresa formal que lo sea.
+- **Intermediación:** contrato claro entre cliente, aseador y Aseada, política de cancelación, comprobante de pago y trazabilidad del estado `pendiente`, `en revisión`, `aprobado` y `pagado`.
+
+La implementación actual no calcula retenciones ni libera dinero automáticamente: solo muestra la ganancia bruta. Antes de cobrar en producción hay que validar el modelo con un contador o abogado laboral en Chile, especialmente si Aseada fija horarios, instrucciones, supervisión o sanciones, porque esos elementos pueden configurar relación laboral aunque el contrato diga “independiente”.
+
+### Decisión de precios
+
+No recomiendo reducir toda la tabla un 5% todavía. La comisión e IVA ya elevan el total del cliente, pero bajar permanentemente el precio reduce el margen disponible para soporte, pagos, seguros, reclamos y adquisición de clientes. Es preferible probar un lanzamiento con 5% de descuento limitado a los primeros servicios o a una comuna, medir conversión, aceptación de trabajadores y margen real, y luego ajustar por categoría.
+
+### Notificaciones de trabajos
+
+Al crear un servicio, el backend intenta crear una notificación para cada aseador activo. En web, el panel del aseador consulta nuevos trabajos cada cinco segundos y puede mostrar una notificación del navegador. Para iOS y Android todavía falta conectar Expo Notifications con credenciales de producción; el polling seguirá funcionando como respaldo.
+
+En la web publicada, el trabajador debe pulsar `Activar sonido` una vez para cumplir la restricción del navegador sobre reproducción automática. Desde ese momento, cada nuevo trabajo puede generar un aviso visual y un sonido. En móviles, `expo-notifications` ya está instalado y configurado; falta definir el `projectId` de EAS y desplegar el backend con PostgreSQL para enviar los tokens push reales.

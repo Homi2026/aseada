@@ -12,7 +12,7 @@ export default function HomeCliente() {
 
   const salir = async () => {
     await cerrarSesion();
-    router.replace('/');
+    router.replace('/login');
   };
 
   return (

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm install --legacy-peer-deps",
+  "buildCommand": "npx expo export --platform web && mkdir -p dist/api && cp 'api/[...path].js' 'dist/api/[...path].js'",
+  "outputDirectory": "dist",
+  "framework": null,
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/auth/:path*", "destination": "/api/auth/:path*" }
+  ]
+}

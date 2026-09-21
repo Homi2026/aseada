@@ -11,9 +11,14 @@ export default function Registro() {
   const [password, setPassword] = useState('');
   const [rol, setRol] = useState('cliente');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const registrar = async () => {
-    if (!nombre || !email || !password) return Alert.alert('Error', 'Completa todos los campos');
+    if (!nombre || !email || !password) {
+      setError('Completa nombre, email y contraseña.');
+      return;
+    }
+    setError('');
     setLoading(true);
     try {
       const res = await api.post('/auth/registro', { nombre, email, password, telefono, rol });
@@ -22,12 +27,13 @@ export default function Registro() {
         if (rol === 'worker') router.replace('/worker/home');
         else router.replace('/cliente/home');
       } else {
-        Alert.alert('Error', res.error || 'Error al registrar');
+        setError(res.error || 'No se pudo crear la cuenta.');
       }
-    } catch (e) {
-      Alert.alert('Error', 'No se pudo conectar al servidor');
+    } catch (e: any) {
+      setError(e?.message?.includes('404') ? 'El servicio de cuentas todavía no está publicado.' : 'No se pudo conectar al servicio de cuentas.');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -46,6 +52,7 @@ export default function Registro() {
       <TextInput style={styles.input} placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
       <TextInput style={styles.input} placeholder="Teléfono" value={telefono} onChangeText={setTelefono} keyboardType="phone-pad" />
       <TextInput style={styles.input} placeholder="Contraseña" value={password} onChangeText={setPassword} secureTextEntry />
+      {error ? <Text style={styles.error}>{error}</Text> : null}
       <TouchableOpacity style={styles.btn} onPress={registrar} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Crear cuenta</Text>}
       </TouchableOpacity>
@@ -68,5 +75,6 @@ const styles = StyleSheet.create({
   input: { width: '100%', borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 16, marginBottom: 12, fontSize: 16 },
   btn: { width: '100%', backgroundColor: '#6C63FF', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 16 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  link: { color: '#6C63FF', fontSize: 14 }
+  link: { color: '#6C63FF', fontSize: 14 },
+  error: { color: '#b42318', backgroundColor: '#fff1f0', borderRadius: 8, padding: 10, width: '100%', marginBottom: 12, textAlign: 'center' },
 });

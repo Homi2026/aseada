@@ -61,7 +61,7 @@ El resultado queda en `dist/`. La estructura recomendada para el producto es:
 - `aseada.cl`: portada pública y presentación del servicio.
 - `app.aseada.cl`: aplicación operativa con login, registro y solicitudes.
 - API web: backend serverless desplegado en `https://aseada-backend.vercel.app`, configurado en `src/constants/api.ts`.
-- Persistencia web: Vercel Blob conectado al proyecto `aseada-backend` para cuentas, servicios y notificaciones del MVP.
+- Persistencia: PostgreSQL (Neon) conectado al proyecto `aseada-backend`. El esquema vive en `aseada-backend/migrations/`.
 
 Para una prueba local del build final:
 
@@ -71,7 +71,16 @@ npx serve dist -l 19012
 
 Antes de publicar, configurar el dominio personalizado en el proveedor elegido y verificar que `app.aseada.cl` apunte al hosting de la carpeta `dist`. La cuenta de Instagram debe crearse manualmente con el nombre de marca disponible y luego reemplazar el enlace provisional de la portada.
 
-El backend PostgreSQL original permanece en `aseada-backend/server.js` para la futura versión móvil y pagos Flow. La web operativa usa la función serverless en `aseada-backend/api/[...path].js` mientras se termina la migración a PostgreSQL.
+### Un solo backend
+
+Web y móvil usan el mismo backend: la app de Express en `aseada-backend/server.js`, sobre PostgreSQL.
+
+- En Vercel, `aseada-backend/api/index.js` exporta esa misma app y `vercel.json` reescribe todas las rutas hacia ella.
+- En local, `node server.js` levanta la app en el puerto 3000.
+
+Antes había tres implementaciones en paralelo —el `server.js` de PostgreSQL y dos copias distintas de un handler sobre Vercel Blob, una en cada repositorio, que ya se habían desincronizado entre sí—. Las de Blob se eliminaron: cubrían 8 de las 22 rutas y dejaban la web sin pagos, sin `completar servicio` y sin calificaciones.
+
+Para levantar un ambiente nuevo, aplicar en orden los archivos de `aseada-backend/migrations/` sobre una base vacía.
 
 ## Join the community
 

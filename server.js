@@ -231,13 +231,19 @@ app.post('/auth/login', async (req, res) => {
 });
 
 // ─── USUARIOS ────────────────────────────────────────────────────────────────
+// Devuelve la propia cuenta. Antes listaba a todos los usuarios con su email
+// y telefono; no existe rol de administrador que justifique ese acceso.
 app.get('/api/usuarios', verificarToken, async (req, res) => {
-  try { const r = await pool.query('SELECT id,nombre,email,rol,telefono,foto_url,calificacion_promedio,total_servicios,activo FROM usuarios'); res.json(r.rows); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  try {
+    const r = await pool.query('SELECT id,nombre,email,rol,telefono,foto_url,calificacion_promedio,total_servicios,activo FROM usuarios WHERE id=$1', [req.usuario.id]);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Vitrina publica de aseadores. Sin email ni telefono: son datos de contacto
+// personales y esta ruta no pide sesion.
 app.get('/api/workers', async (req, res) => {
-  try { const r = await pool.query("SELECT id,nombre,email,telefono,foto_url,calificacion_promedio,total_servicios,activo FROM usuarios WHERE rol='worker' AND activo=true ORDER BY calificacion_promedio DESC"); res.json(r.rows); }
+  try { const r = await pool.query("SELECT id,nombre,foto_url,calificacion_promedio,total_servicios,comuna FROM usuarios WHERE rol='worker' AND activo=true ORDER BY calificacion_promedio DESC"); res.json(r.rows); }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -283,6 +289,9 @@ app.put('/api/servicios/:id/completar', verificarToken, async (req, res) => {
     const { rows } = await pool.query('SELECT * FROM servicios WHERE id=$1', [req.params.id]);
     const s = rows[0];
     if (!s) return res.status(404).json({ error: 'Servicio no encontrado' });
+    // Solo el aseador asignado da por terminado su propio trabajo: completar
+    // es la condicion previa para que se libere el pago.
+    if (s.worker_id !== req.usuario.id) return res.status(403).json({ error: 'Solo el aseador asignado puede completar este servicio' });
     if (s.estado !== 'en_proceso') return res.status(400).json({ error: 'El servicio no está en proceso' });
     await pool.query("UPDATE servicios SET estado='completado', completado_en=NOW() WHERE id=$1", [req.params.id]);
     res.json({ mensaje: 'Servicio completado — pago será liberado al worker' });
@@ -349,6 +358,10 @@ app.post('/api/pagos/liberar/:servicio_id', exigirFlow, verificarToken, async (r
     const { rows } = await pool.query('SELECT s.*, p.id as pago_id, p.pago_worker, u.email as worker_email FROM servicios s JOIN pagos p ON p.servicio_id=s.id JOIN usuarios u ON u.id=s.worker_id WHERE s.id=$1', [req.params.servicio_id]);
     const s = rows[0];
     if (!s) return res.status(404).json({ error: 'Servicio no encontrado' });
+    // Por aca sale el dinero del escrow. Solo el cliente que pago puede
+    // liberarlo; sin esta comprobacion cualquier sesion valida podia cobrar
+    // el servicio de otra persona.
+    if (s.cliente_id !== req.usuario.id) return res.status(403).json({ error: 'Solo el cliente del servicio puede liberar el pago' });
     if (s.estado !== 'completado') return res.status(400).json({ error: 'El servicio no está completado' });
     await pool.query("UPDATE pagos SET estado='liberado', liberado_en=NOW() WHERE id=$1", [s.pago_id]);
     await pool.query("UPDATE servicios SET estado='pagado' WHERE id=$1", [req.params.servicio_id]);
@@ -357,15 +370,26 @@ app.post('/api/pagos/liberar/:servicio_id', exigirFlow, verificarToken, async (r
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Cada parte ve solo los pagos que le incumben: el cliente los suyos, el
+// aseador los de los servicios que atendio. Antes devolvia la tabla entera,
+// con los montos y los tokens de Flow de todo el mundo.
 app.get('/api/pagos', verificarToken, async (req, res) => {
-  try { const r = await pool.query('SELECT * FROM pagos ORDER BY id DESC'); res.json(r.rows); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  try {
+    const r = req.usuario.rol === 'worker'
+      ? await pool.query('SELECT p.* FROM pagos p JOIN servicios s ON s.id=p.servicio_id WHERE s.worker_id=$1 ORDER BY p.id DESC', [req.usuario.id])
+      : await pool.query('SELECT * FROM pagos WHERE cliente_id=$1 ORDER BY id DESC', [req.usuario.id]);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── RESTO DE RUTAS ───────────────────────────────────────────────────────────
-app.get('/api/calificaciones', async (req, res) => {
-  try { const r = await pool.query('SELECT * FROM calificaciones ORDER BY id DESC'); res.json(r.rows); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+// Las calificaciones que el usuario escribio o recibio. Antes era publica y
+// sin sesion: exponia los comentarios de todos.
+app.get('/api/calificaciones', verificarToken, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM calificaciones WHERE autor_id=$1 OR destinatario_id=$1 ORDER BY id DESC', [req.usuario.id]);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/notificaciones', verificarToken, async (req, res) => {
@@ -407,9 +431,15 @@ app.get('/api/disponibilidad', async (req, res) => {
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Fotos de los servicios en que el usuario participa. Son imagenes del
+// interior de casas ajenas: antes cualquier sesion las veia todas.
 app.get('/api/fotos_servicio', verificarToken, async (req, res) => {
-  try { const r = await pool.query('SELECT * FROM fotos_servicio ORDER BY id DESC'); res.json(r.rows); }
-  catch(e) { res.status(500).json({ error: e.message }); }
+  try {
+    const r = await pool.query(
+      `SELECT f.* FROM fotos_servicio f JOIN servicios s ON s.id=f.servicio_id
+       WHERE s.cliente_id=$1 OR s.worker_id=$1 ORDER BY f.id DESC`, [req.usuario.id]);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 // ─── WORKER RUTAS ────────────────────────────────────────────────────────────
 app.get('/api/worker/disponibles', verificarToken, exigirRol('worker'), async (req, res) => {

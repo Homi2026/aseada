@@ -80,7 +80,13 @@ Web y móvil usan el mismo backend: la app de Express en `aseada-backend/server.
 
 Antes había tres implementaciones en paralelo —el `server.js` de PostgreSQL y dos copias distintas de un handler sobre Vercel Blob, una en cada repositorio, que ya se habían desincronizado entre sí—. Las de Blob se eliminaron: cubrían 8 de las 22 rutas y dejaban la web sin pagos, sin `completar servicio` y sin calificaciones.
 
-Para levantar un ambiente nuevo, aplicar en orden los archivos de `aseada-backend/migrations/` sobre una base vacía.
+Para levantar un ambiente nuevo:
+
+1. Crear la base PostgreSQL y dejar `DATABASE_URL` disponible.
+2. Aplicar el esquema: `cd aseada-backend && npm run migrate`. El runner lleva registro en la tabla `_migraciones`, así que repetirlo es seguro.
+3. Configurar `JWT_SECRET` y, si se van a cobrar pagos, `FLOW_API_KEY`, `FLOW_SECRET_KEY` y `PUBLIC_URL`. Las dos primeras variables son obligatorias: sin ellas el servidor no arranca.
+
+`npm test` levanta un PostgreSQL en memoria y verifica que el esquema siga en sintonía con las consultas de `server.js`.
 
 ## Join the community
 

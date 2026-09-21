@@ -2,7 +2,8 @@ const { get, list, put } = require('@vercel/blob');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
-const SECRET = process.env.JWT_SECRET || 'aseada-web-mvp-change-me';
+const SECRET = process.env.JWT_SECRET;
+if (!SECRET) throw new Error('Falta la variable de entorno JWT_SECRET. Sin ella cualquiera podria firmar tokens validos, asi que la funcion no se inicializa.');
 const FILE = 'aseada-data.json';
 const COMMISSION = 0.2;
 const VAT = 0.19;

@@ -88,7 +88,11 @@ const RETENCION_HONORARIOS = 0.1525;
 // termine en :990 y capture el margen revisado, sin tocar lo que recibe el
 // trabajador. Fuera de estos paquetes (con materiales, horas extra, tramos
 // superiores) se sigue usando la formula dinamica de COMISION/IVA.
-const COMISION_LISTA_ASEO = { 50: 5874, 120: 10916, 200: 14277 };
+// El tramo 50 (Depto pequeño) quedo con muy poco colchon frente a un CPA que
+// varia: con comision=5874 y CPA=5000, un CPA real de 6000 ya deja perdida.
+// Se sube a 10076 para que la utilidad aguante un CPA bastante mas alto que
+// la estimacion antes de partir en rojo.
+const COMISION_LISTA_ASEO = { 50: 10076, 120: 10916, 200: 14277 };
 const COMISION_LISTA_FUMIGACION = { insectos: { 50: 15958 }, roedores: { 50: 15958 } };
 const PRECIOS_FUMIGACION = {
   insectos: { 50: 46000, 100: 49900, 200: 64900, 999: 84900 },

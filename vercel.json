@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "rewrites": [
+    { "source": "/auth/:path*", "destination": "/api/auth/:path*" },
+    { "source": "/calcular-precio", "destination": "/api/calcular-precio" },
+    { "source": "/servicios", "destination": "/api/servicios" },
+    { "source": "/mis-servicios", "destination": "/api/mis-servicios" },
+    { "source": "/notificaciones", "destination": "/api/notificaciones" },
+    { "source": "/worker/:path*", "destination": "/api/worker/:path*" }
+  ]
+}

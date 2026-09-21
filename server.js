@@ -31,18 +31,18 @@ const FLOW_API_URL = process.env.FLOW_API_URL || 'https://www.flow.cl/api';
 // cada deploy: para produccion hay que fijar PUBLIC_URL al dominio estable.
 const PUBLIC_URL = (process.env.PUBLIC_URL || (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) || '').replace(/\/$/, '');
 
-const FLOW_CONFIGURADO = Boolean(FLOW_API_KEY && FLOW_SECRET && PUBLIC_URL);
-if (!FLOW_CONFIGURADO) {
-  const faltan = [
-    !FLOW_API_KEY && 'FLOW_API_KEY',
-    !FLOW_SECRET && 'FLOW_SECRET_KEY',
-    !PUBLIC_URL && 'PUBLIC_URL'
-  ].filter(Boolean).join(', ');
-  console.warn(`[aseada] faltan ${faltan}: las rutas de pago responderan 503.`);
-}
+const FALTA_PARA_FLOW = [
+  !FLOW_API_KEY && 'FLOW_API_KEY',
+  !FLOW_SECRET && 'FLOW_SECRET_KEY',
+  !PUBLIC_URL && 'PUBLIC_URL'
+].filter(Boolean);
+const FLOW_CONFIGURADO = FALTA_PARA_FLOW.length === 0;
+if (!FLOW_CONFIGURADO) console.warn(`[aseada] faltan ${FALTA_PARA_FLOW.join(', ')}: las rutas de pago responderan 503.`);
 
 const exigirFlow = (req, res, next) => {
-  if (!FLOW_CONFIGURADO) return res.status(503).json({ error: 'Los pagos no estan disponibles: falta configurar FLOW_API_KEY, FLOW_SECRET_KEY y PUBLIC_URL en el servidor.' });
+  // Nombrar solo lo que falta de verdad: una lista fija manda a revisar
+  // variables que ya estaban bien puestas.
+  if (!FLOW_CONFIGURADO) return res.status(503).json({ error: `Los pagos no estan disponibles: falta configurar ${FALTA_PARA_FLOW.join(', ')} en el servidor.` });
   next();
 };
 // En Vercel cada invocacion corre en su propia instancia, asi que un pool

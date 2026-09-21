@@ -19,7 +19,16 @@ CREATE TABLE IF NOT EXISTS usuarios (
   total_servicios       INTEGER      NOT NULL DEFAULT 0,
   activo                BOOLEAN      NOT NULL DEFAULT TRUE,
   push_token            TEXT,
-  creado_en             TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  creado_en             TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+  -- Perfil del aseador. Solo se llena para rol='worker', via
+  -- POST /api/worker/perfil. Mientras perfil_pago_completo sea false, el
+  -- aseador no ha declarado bajo que modalidad presta el servicio.
+  modalidad             VARCHAR(30)  CHECK (modalidad IS NULL OR modalidad IN ('independiente')),
+  acepta_boleta         BOOLEAN      NOT NULL DEFAULT FALSE,
+  comuna                TEXT         NOT NULL DEFAULT '',
+  experiencia           TEXT         NOT NULL DEFAULT '',
+  perfil_pago_completo  BOOLEAN      NOT NULL DEFAULT FALSE
 );
 
 -- El login busca por email en cada request.

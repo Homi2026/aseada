@@ -1,4 +1,7 @@
-require('dotenv').config();
+// .env.local primero porque es lo que escribe `vercel env pull`, y tiene
+// precedencia sobre .env. En Vercel las variables vienen de la plataforma y
+// estos archivos no existen, asi que esto solo aplica en local.
+require('dotenv').config({ path: ['.env.local', '.env'], quiet: true });
 const express = require('express');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
@@ -21,14 +24,40 @@ requerida('DATABASE_URL', 'Sin ella ninguna ruta puede consultar la base de dato
 const FLOW_API_KEY = process.env.FLOW_API_KEY;
 const FLOW_SECRET = process.env.FLOW_SECRET_KEY;
 const FLOW_API_URL = process.env.FLOW_API_URL || 'https://www.flow.cl/api';
-const FLOW_CONFIGURADO = Boolean(FLOW_API_KEY && FLOW_SECRET);
-if (!FLOW_CONFIGURADO) console.warn('[aseada] FLOW_API_KEY o FLOW_SECRET_KEY no configuradas: las rutas de pago responderan 503.');
+
+// Flow necesita una URL publica a la que volver despues del pago. Estaba
+// escrita a mano apuntando a Railway, que ya no existe, asi que ninguna
+// confirmacion podia llegar. VERCEL_URL sirve de respaldo, pero cambia en
+// cada deploy: para produccion hay que fijar PUBLIC_URL al dominio estable.
+const PUBLIC_URL = (process.env.PUBLIC_URL || (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) || '').replace(/\/$/, '');
+
+const FLOW_CONFIGURADO = Boolean(FLOW_API_KEY && FLOW_SECRET && PUBLIC_URL);
+if (!FLOW_CONFIGURADO) {
+  const faltan = [
+    !FLOW_API_KEY && 'FLOW_API_KEY',
+    !FLOW_SECRET && 'FLOW_SECRET_KEY',
+    !PUBLIC_URL && 'PUBLIC_URL'
+  ].filter(Boolean).join(', ');
+  console.warn(`[aseada] faltan ${faltan}: las rutas de pago responderan 503.`);
+}
 
 const exigirFlow = (req, res, next) => {
-  if (!FLOW_CONFIGURADO) return res.status(503).json({ error: 'Los pagos no estan disponibles: falta configurar FLOW_API_KEY y FLOW_SECRET_KEY en el servidor.' });
+  if (!FLOW_CONFIGURADO) return res.status(503).json({ error: 'Los pagos no estan disponibles: falta configurar FLOW_API_KEY, FLOW_SECRET_KEY y PUBLIC_URL en el servidor.' });
   next();
 };
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+// En Vercel cada invocacion corre en su propia instancia, asi que un pool
+// grande multiplica conexiones contra Postgres hasta agotarlas. Con una
+// conexion por instancia y cierre rapido de las ociosas, el pooler de Neon
+// absorbe la concurrencia.
+const EN_SERVERLESS = Boolean(process.env.VERCEL);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false },
+  max: EN_SERVERLESS ? 1 : 10,
+  idleTimeoutMillis: EN_SERVERLESS ? 10000 : 30000,
+  connectionTimeoutMillis: 10000
+});
+pool.on('error', (error) => console.error('[aseada] error inesperado en el pool de Postgres:', error.message));
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -87,6 +116,11 @@ async function prepararEsquema() {
   await pool.query("ALTER TABLE servicios ADD COLUMN IF NOT EXISTS horas_incluidas INTEGER");
   await pool.query("ALTER TABLE servicios ADD COLUMN IF NOT EXISTS iva INTEGER DEFAULT 0");
   await pool.query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS push_token TEXT");
+  await pool.query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS modalidad VARCHAR(30)");
+  await pool.query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS acepta_boleta BOOLEAN NOT NULL DEFAULT FALSE");
+  await pool.query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS comuna TEXT NOT NULL DEFAULT ''");
+  await pool.query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS experiencia TEXT NOT NULL DEFAULT ''");
+  await pool.query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perfil_pago_completo BOOLEAN NOT NULL DEFAULT FALSE");
   await pool.query(`CREATE TABLE IF NOT EXISTS notificaciones (
     id SERIAL PRIMARY KEY,
     usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
@@ -270,8 +304,8 @@ app.post('/api/pagos/crear', exigirFlow, verificarToken, async (req, res) => {
       currency: 'CLP',
       amount: s.total_cliente,
       email: req.usuario.email,
-      urlConfirmation: `https://aseada-backend-production.up.railway.app/pagos/flow/confirmacion`,
-      urlReturn: `https://aseada-backend-production.up.railway.app/pagos/flow/retorno`
+      urlConfirmation: `${PUBLIC_URL}/pagos/flow/confirmacion`,
+      urlReturn: `${PUBLIC_URL}/pagos/flow/retorno`
     });
     await pool.query(
       'INSERT INTO pagos(servicio_id,cliente_id,monto_total,comision_aseada,pago_worker,estado,flow_token,flow_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
@@ -339,6 +373,26 @@ app.get('/api/notificaciones', verificarToken, async (req, res) => {
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// El aseador declara bajo que modalidad presta el servicio. Hoy la unica
+// aceptada es prestador independiente con boleta de honorarios: mientras no
+// se defina la relacion juridica, la plataforma no puede ofrecer otra.
+app.post('/api/worker/perfil', verificarToken, exigirRol('worker'), async (req, res) => {
+  try {
+    const { modalidad = 'independiente', acepta_boleta = false, comuna, experiencia } = req.body;
+    if (modalidad !== 'independiente' || acepta_boleta !== true) {
+      return res.status(400).json({ error: 'Debes aceptar trabajar como prestador independiente y emitir boleta de honorarios' });
+    }
+    const r = await pool.query(
+      `UPDATE usuarios
+       SET modalidad=$1, acepta_boleta=true, comuna=$2, experiencia=$3, perfil_pago_completo=true
+       WHERE id=$4 RETURNING perfil_pago_completo`,
+      [modalidad, comuna || '', experiencia || '', req.usuario.id]
+    );
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Trabajador no encontrado' });
+    res.json({ ok: true, perfil_pago_completo: r.rows[0].perfil_pago_completo });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/push-token', verificarToken, exigirRol('worker'), async (req, res) => {
   try {
     const { push_token } = req.body;
@@ -381,6 +435,17 @@ app.post('/api/worker/aceptar/:id', verificarToken, exigirRol('worker'), async (
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-prepararEsquema()
-  .catch((error) => console.warn('No se pudo actualizar el esquema automáticamente:', error.message))
-  .finally(() => app.listen(PORT, '0.0.0.0', () => console.log('Aseada v3.0 PostgreSQL + Flow corriendo en puerto ' + PORT)));
+// Ruta no encontrada: responder JSON, no el HTML por defecto de Express, para
+// que el cliente siempre pueda parsear la respuesta.
+app.use((req, res) => res.status(404).json({ error: `Ruta no encontrada: ${req.method} ${req.path}` }));
+
+module.exports = app;
+
+// Solo al ejecutar `node server.js` directamente. Bajo Vercel el archivo se
+// importa como modulo y la plataforma maneja el ciclo de vida del request,
+// asi que abrir un puerto ahi no corresponde.
+if (require.main === module) {
+  prepararEsquema()
+    .catch((error) => console.warn('No se pudo actualizar el esquema automáticamente:', error.message))
+    .finally(() => app.listen(PORT, '0.0.0.0', () => console.log('Aseada v3.0 PostgreSQL + Flow corriendo en puerto ' + PORT)));
+}

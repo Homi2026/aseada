@@ -43,3 +43,10 @@ app-example
 /android
 .vercel
 .env*
+
+# Agent skills instaladas por herramientas locales (fuentes, PDF, tarballs).
+# Son ~6 MB de binarios que no forman parte de la app.
+.agents/
+.claude/skills/
+.claude/launch.json
+skills-lock.json

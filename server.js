@@ -31,6 +31,10 @@ const FLOW_API_URL = process.env.FLOW_API_URL || 'https://www.flow.cl/api';
 // cada deploy: para produccion hay que fijar PUBLIC_URL al dominio estable.
 const PUBLIC_URL = (process.env.PUBLIC_URL || (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) || '').replace(/\/$/, '');
 
+// Donde vive la app web, para devolver ahi al cliente despues de pagar. Si no
+// esta definida se usa el deep link aseada://, que solo sirve en movil.
+const APP_URL = (process.env.APP_URL || '').replace(/\/$/, '');
+
 const FALTA_PARA_FLOW = [
   !FLOW_API_KEY && 'FLOW_API_KEY',
   !FLOW_SECRET && 'FLOW_SECRET_KEY',
@@ -341,16 +345,25 @@ app.post('/pagos/flow/confirmacion', exigirFlow, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Adonde vuelve el usuario despues de pagar. Flow trae de vuelta al
+// navegador, asi que en web hay que mandarlo a una URL http: el esquema
+// aseada:// solo lo entiende la app instalada, y en un navegador deja al
+// cliente en una pantalla muerta justo despues de haber pagado.
+function destinoTrasPago(resultado, token) {
+  const query = `?pago=${resultado}&token=${encodeURIComponent(token || '')}`;
+  return APP_URL ? `${APP_URL}/cliente/historial${query}` : `aseada://pago-${resultado}${query}`;
+}
+
 app.get('/pagos/flow/retorno', exigirFlow, async (req, res) => {
   try {
     const { token } = req.query;
     const flowData = await flowGet('/payment/getStatus', { token });
-    if (flowData.status === 2) {
-      res.redirect('aseada://pago-exitoso?token=' + token);
-    } else {
-      res.redirect('aseada://pago-rechazado?token=' + token);
-    }
-  } catch(e) { res.redirect('aseada://pago-rechazado'); }
+    // status 2 = pagado, segun la API de Flow.
+    res.redirect(destinoTrasPago(flowData.status === 2 ? 'exitoso' : 'rechazado', token));
+  } catch (error) {
+    console.error('[aseada] no se pudo verificar el pago al volver de Flow:', error.message);
+    res.redirect(destinoTrasPago('rechazado', req.query.token));
+  }
 });
 
 app.post('/api/pagos/liberar/:servicio_id', exigirFlow, verificarToken, async (req, res) => {

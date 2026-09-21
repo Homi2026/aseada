@@ -67,11 +67,16 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ─── PRECIOS ────────────────────────────────────────────────────────────────
+// Tabla revisada (2026-09): sube el pago base al trabajador ~12% en los 3
+// tramos de lista y sube la comision de Aseada para que ambos ganen mas,
+// manteniendo el precio final bajo el promedio de mercado (ver desglose
+// entregado al dueño). Los tramos 80 y 999, sin precio publicitado, quedan
+// igual.
 const PRECIOS = {
-  50:  { sin_materiales: 25000, con_materiales: 30000 },
+  50:  { sin_materiales: 28000, con_materiales: 33000 },
   80:  { sin_materiales: 35000, con_materiales: 40000 },
-  120: { sin_materiales: 45000, con_materiales: 50000 },
-  200: { sin_materiales: 60000, con_materiales: 65000 },
+  120: { sin_materiales: 50000, con_materiales: 55000 },
+  200: { sin_materiales: 68000, con_materiales: 73000 },
   999: { sin_materiales: 80000, con_materiales: 85000 }
 };
 const HORAS_EXTRA = { 1: 8000, 2: 15000, 3: 21000 };
@@ -79,15 +84,15 @@ const COMISION = 0.20;
 const IVA = 0.19;
 const RETENCION_HONORARIOS = 0.1525;
 // Comision de lista: para los paquetes que se publicitan (sin materiales, sin horas
-// extra / tramo base de fumigacion), la comision se ajusta unos pesos por sobre el
-// 20% general para que el precio final termine en :990, sin tocar lo que recibe el
+// extra / tramo base de fumigacion), la comision se fija para que el precio final
+// termine en :990 y capture el margen revisado, sin tocar lo que recibe el
 // trabajador. Fuera de estos paquetes (con materiales, horas extra, tramos
 // superiores) se sigue usando la formula dinamica de COMISION/IVA.
-const COMISION_LISTA_ASEO = { 50: 5034, 120: 9235, 200: 12597 };
-const COMISION_LISTA_FUMIGACION = { insectos: { 50: 8479 }, roedores: { 50: 10160 } };
+const COMISION_LISTA_ASEO = { 50: 5874, 120: 10916, 200: 14277 };
+const COMISION_LISTA_FUMIGACION = { insectos: { 50: 15958 }, roedores: { 50: 15958 } };
 const PRECIOS_FUMIGACION = {
-  insectos: { 50: 39900, 100: 49900, 200: 64900, 999: 84900 },
-  roedores: { 50: 49900, 100: 59900, 200: 79900, 999: 99900 },
+  insectos: { 50: 46000, 100: 49900, 200: 64900, 999: 84900 },
+  roedores: { 50: 56000, 100: 59900, 200: 79900, 999: 99900 },
   mixto: { 50: 59900, 100: 69900, 200: 89900, 999: 119900 }
 };
 const HORAS_INCLUIDAS = { 50: 3, 80: 4, 120: 4, 200: 5, 999: 6 };

@@ -78,6 +78,13 @@ const HORAS_EXTRA = { 1: 8000, 2: 15000, 3: 21000 };
 const COMISION = 0.20;
 const IVA = 0.19;
 const RETENCION_HONORARIOS = 0.1525;
+// Comision de lista: para los paquetes que se publicitan (sin materiales, sin horas
+// extra / tramo base de fumigacion), la comision se ajusta unos pesos por sobre el
+// 20% general para que el precio final termine en :990, sin tocar lo que recibe el
+// trabajador. Fuera de estos paquetes (con materiales, horas extra, tramos
+// superiores) se sigue usando la formula dinamica de COMISION/IVA.
+const COMISION_LISTA_ASEO = { 50: 5034, 120: 9235, 200: 12597 };
+const COMISION_LISTA_FUMIGACION = { insectos: { 50: 8479 }, roedores: { 50: 10160 } };
 const PRECIOS_FUMIGACION = {
   insectos: { 50: 39900, 100: 49900, 200: 64900, 999: 84900 },
   roedores: { 50: 49900, 100: 59900, 200: 79900, 999: 99900 },
@@ -95,18 +102,21 @@ function calcularPrecio(metros, horas_extra, con_materiales, tipo_servicio = 'as
     const tabla = PRECIOS_FUMIGACION[tipo_plaga] || PRECIOS_FUMIGACION.insectos;
     const limite = Object.keys(tabla).map(Number).sort((a, b) => a - b).find((valor) => metros <= valor) || 999;
     const precio_base = tabla[limite];
-    const comision = Math.round(precio_base * COMISION);
+    const comisionLista = COMISION_LISTA_FUMIGACION[tipo_plaga]?.[limite];
+    const comision = comisionLista ?? Math.round(precio_base * COMISION);
     const iva = Math.round(comision * IVA);
     const retencion_honorarios = Math.round(precio_base * RETENCION_HONORARIOS);
     return { precio_base, extra: 0, subtotal: precio_base, comision, iva, total_cliente: precio_base + comision + iva, worker_recibe: precio_base, retencion_honorarios, worker_liquido_estimado: precio_base - retencion_honorarios, horas_incluidas: null, tipo_servicio, tipo_plaga };
   }
   let precio_base = 0;
+  let limiteUsado = null;
   for (const limite of Object.keys(PRECIOS).map(Number).sort((a,b)=>a-b)) {
-    if (metros <= limite) { precio_base = PRECIOS[limite][con_materiales ? 'con_materiales' : 'sin_materiales']; break; }
+    if (metros <= limite) { precio_base = PRECIOS[limite][con_materiales ? 'con_materiales' : 'sin_materiales']; limiteUsado = limite; break; }
   }
   const extra = HORAS_EXTRA[horas_extra] || 0;
   const subtotal = precio_base + extra;
-  const comision = Math.round(subtotal * COMISION);
+  const comisionLista = (!con_materiales && !extra) ? COMISION_LISTA_ASEO[limiteUsado] : undefined;
+  const comision = comisionLista ?? Math.round(subtotal * COMISION);
   const iva = Math.round(comision * IVA);
   const total_cliente = subtotal + comision + iva;
   const worker_recibe = subtotal;

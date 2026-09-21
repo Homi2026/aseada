@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
@@ -26,8 +27,30 @@ const PRECIOS = {
 };
 const HORAS_EXTRA = { 1: 8000, 2: 15000, 3: 21000 };
 const COMISION = 0.20;
+const IVA = 0.19;
+const RETENCION_HONORARIOS = 0.1525;
+const PRECIOS_FUMIGACION = {
+  insectos: { 50: 39900, 100: 49900, 200: 64900, 999: 84900 },
+  roedores: { 50: 49900, 100: 59900, 200: 79900, 999: 99900 },
+  mixto: { 50: 59900, 100: 69900, 200: 89900, 999: 119900 }
+};
+const HORAS_INCLUIDAS = { 50: 3, 80: 4, 120: 4, 200: 5, 999: 6 };
 
-function calcularPrecio(metros, horas_extra, con_materiales) {
+function horasIncluidas(metros) {
+  const limite = Object.keys(HORAS_INCLUIDAS).map(Number).sort((a, b) => a - b).find((valor) => metros <= valor) || 999;
+  return HORAS_INCLUIDAS[limite];
+}
+
+function calcularPrecio(metros, horas_extra, con_materiales, tipo_servicio = 'aseo', tipo_plaga = 'insectos') {
+  if (tipo_servicio === 'fumigacion') {
+    const tabla = PRECIOS_FUMIGACION[tipo_plaga] || PRECIOS_FUMIGACION.insectos;
+    const limite = Object.keys(tabla).map(Number).sort((a, b) => a - b).find((valor) => metros <= valor) || 999;
+    const precio_base = tabla[limite];
+    const comision = Math.round(precio_base * COMISION);
+    const iva = Math.round(comision * IVA);
+    const retencion_honorarios = Math.round(precio_base * RETENCION_HONORARIOS);
+    return { precio_base, extra: 0, subtotal: precio_base, comision, iva, total_cliente: precio_base + comision + iva, worker_recibe: precio_base, retencion_honorarios, worker_liquido_estimado: precio_base - retencion_honorarios, horas_incluidas: null, tipo_servicio, tipo_plaga };
+  }
   let precio_base = 0;
   for (const limite of Object.keys(PRECIOS).map(Number).sort((a,b)=>a-b)) {
     if (metros <= limite) { precio_base = PRECIOS[limite][con_materiales ? 'con_materiales' : 'sin_materiales']; break; }
@@ -35,9 +58,49 @@ function calcularPrecio(metros, horas_extra, con_materiales) {
   const extra = HORAS_EXTRA[horas_extra] || 0;
   const subtotal = precio_base + extra;
   const comision = Math.round(subtotal * COMISION);
-  const total_cliente = subtotal + comision;
+  const iva = Math.round(comision * IVA);
+  const total_cliente = subtotal + comision + iva;
   const worker_recibe = subtotal;
-  return { precio_base, extra, subtotal, comision, total_cliente, worker_recibe };
+  const retencion_honorarios = Math.round(subtotal * RETENCION_HONORARIOS);
+  return { precio_base, extra, subtotal, comision, iva, total_cliente, worker_recibe, retencion_honorarios, worker_liquido_estimado: subtotal - retencion_honorarios, horas_incluidas: horasIncluidas(metros), tipo_servicio };
+}
+
+async function prepararEsquema() {
+  await pool.query("ALTER TABLE servicios ADD COLUMN IF NOT EXISTS tipo_servicio VARCHAR(40) DEFAULT 'aseo'");
+  await pool.query("ALTER TABLE servicios ADD COLUMN IF NOT EXISTS tipo_plaga VARCHAR(40)");
+  await pool.query("ALTER TABLE servicios ADD COLUMN IF NOT EXISTS horas_incluidas INTEGER");
+  await pool.query("ALTER TABLE servicios ADD COLUMN IF NOT EXISTS iva INTEGER DEFAULT 0");
+  await pool.query("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS push_token TEXT");
+  await pool.query(`CREATE TABLE IF NOT EXISTS notificaciones (
+    id SERIAL PRIMARY KEY,
+    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    tipo VARCHAR(80) NOT NULL,
+    titulo TEXT NOT NULL,
+    mensaje TEXT NOT NULL,
+    leida BOOLEAN NOT NULL DEFAULT FALSE,
+    creado_en TIMESTAMP NOT NULL DEFAULT NOW()
+  )`);
+}
+
+async function notificarWorkers(servicio) {
+  try {
+    const result = await pool.query(
+      `INSERT INTO notificaciones(usuario_id, tipo, titulo, mensaje, leida, creado_en)
+       SELECT id, 'nuevo_servicio', $1, $2, false, NOW() FROM usuarios WHERE rol='worker' AND activo=true`,
+      ['Nuevo trabajo disponible', `Hay un servicio de ${servicio.tipo_servicio === 'fumigacion' ? 'fumigación' : 'aseo'} disponible por $${Number(servicio.worker_recibe).toLocaleString('es-CL')}.`]
+    );
+    const workers = await pool.query("SELECT push_token FROM usuarios WHERE rol='worker' AND activo=true AND push_token IS NOT NULL");
+    await Promise.all(workers.rows.map(({ push_token }) => axios.post('https://exp.host/--/api/v2/push/send', {
+      to: push_token,
+      title: 'Aseada: nuevo trabajo disponible',
+      body: `Hay un servicio disponible por $${Number(servicio.worker_recibe).toLocaleString('es-CL')}.`,
+      sound: 'default',
+      channelId: 'trabajos',
+      data: { servicio_id: servicio.id },
+    }).catch((error) => console.warn('No se pudo enviar push:', error.message))));
+  } catch (error) {
+    console.warn('No se pudieron crear notificaciones; el polling de trabajos sigue activo:', error.message);
+  }
 }
 
 // ─── FLOW HELPERS ────────────────────────────────────────────────────────────
@@ -71,14 +134,19 @@ const verificarToken = (req, res, next) => {
   catch { res.status(401).json({ error: 'Token invalido' }); }
 };
 
+const exigirRol = (...roles) => (req, res, next) => {
+  if (!roles.includes(req.usuario.rol)) return res.status(403).json({ error: 'No tienes permiso para esta acción' });
+  next();
+};
+
 // ─── HEALTH ──────────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ mensaje: 'Aseada API funcionando', version: '3.0.0', db: 'PostgreSQL' }));
 
 // ─── CALCULAR PRECIO (público) ───────────────────────────────────────────────
 app.post('/api/calcular-precio', (req, res) => {
-  const { metros, horas_extra = 0, con_materiales = false } = req.body;
+  const { metros, horas_extra = 0, con_materiales = false, tipo_servicio = 'aseo', tipo_plaga = 'insectos' } = req.body;
   if (!metros) return res.status(400).json({ error: 'Faltan metros cuadrados' });
-  const precio = calcularPrecio(metros, horas_extra, con_materiales);
+  const precio = calcularPrecio(metros, horas_extra, con_materiales, tipo_servicio, tipo_plaga);
   res.json(precio);
 });
 
@@ -87,6 +155,7 @@ app.post('/auth/registro', async (req, res) => {
   try {
     const { nombre, email, password, rol, telefono } = req.body;
     if (!nombre||!email||!password||!rol) return res.status(400).json({ error: 'Faltan campos' });
+    if (!['cliente', 'worker'].includes(rol)) return res.status(400).json({ error: 'Rol inválido' });
     const ex = await pool.query('SELECT id FROM usuarios WHERE email=$1', [email]);
     if (ex.rows.length > 0) return res.status(400).json({ error: 'Email ya registrado' });
     const hash = await bcrypt.hash(password, 10);
@@ -125,21 +194,29 @@ app.get('/api/workers', async (req, res) => {
 // ─── SERVICIOS ───────────────────────────────────────────────────────────────
 app.post('/api/servicios', verificarToken, async (req, res) => {
   try {
-    const { metros, horas_extra = 0, con_materiales = false, direccion, fecha_servicio } = req.body;
+    const { metros, horas_extra = 0, con_materiales = false, direccion, fecha_servicio, tipo_servicio = 'aseo', tipo_plaga = null } = req.body;
     if (!metros || !direccion) return res.status(400).json({ error: 'Faltan campos' });
-    const precio = calcularPrecio(metros, horas_extra, con_materiales);
+    if (!['aseo', 'fumigacion'].includes(tipo_servicio)) return res.status(400).json({ error: 'Tipo de servicio inválido' });
+    const precio = calcularPrecio(metros, horas_extra, con_materiales, tipo_servicio, tipo_plaga);
     const r = await pool.query(
-      `INSERT INTO servicios(cliente_id,direccion,fecha_servicio,metros,horas_extra,con_materiales,precio_base,horas_extra_precio,subtotal,comision,total_cliente,worker_recibe,estado)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pendiente_pago') RETURNING *`,
+      `INSERT INTO servicios(cliente_id,direccion,fecha_servicio,metros,horas_extra,con_materiales,precio_base,horas_extra_precio,subtotal,comision,iva,total_cliente,worker_recibe,retencion_honorarios,estado,tipo_servicio,tipo_plaga,horas_incluidas)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'pendiente_pago',$15,$16,$17) RETURNING *`,
       [req.usuario.id, direccion, fecha_servicio, metros, horas_extra, con_materiales,
-       precio.precio_base, precio.extra, precio.subtotal, precio.comision, precio.total_cliente, precio.worker_recibe]
+       precio.precio_base, precio.extra, precio.subtotal, precio.comision, precio.iva, precio.total_cliente, precio.worker_recibe, precio.retencion_honorarios, tipo_servicio, tipo_plaga, precio.horas_incluidas]
     );
+    await notificarWorkers(r.rows[0]);
     res.status(201).json(r.rows[0]);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/servicios', verificarToken, async (req, res) => {
-  try { const r = await pool.query('SELECT * FROM servicios ORDER BY id DESC'); res.json(r.rows); }
+  try {
+    const query = req.usuario.rol === 'worker'
+      ? "SELECT * FROM servicios WHERE estado IN ('buscando_worker', 'pendiente_pago') OR worker_id=$1 ORDER BY id DESC"
+      : 'SELECT * FROM servicios WHERE cliente_id=$1 ORDER BY id DESC';
+    const r = await pool.query(query, [req.usuario.id]);
+    res.json(r.rows);
+  }
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -246,6 +323,15 @@ app.get('/api/notificaciones', verificarToken, async (req, res) => {
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/push-token', verificarToken, exigirRol('worker'), async (req, res) => {
+  try {
+    const { push_token } = req.body;
+    if (!push_token) return res.status(400).json({ error: 'Falta push_token' });
+    await pool.query('UPDATE usuarios SET push_token=$1 WHERE id=$2', [push_token, req.usuario.id]);
+    res.json({ ok: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/disponibilidad', async (req, res) => {
   try { const r = await pool.query("SELECT d.*,u.nombre as worker_nombre,u.calificacion_promedio FROM disponibilidad d JOIN usuarios u ON d.worker_id=u.id WHERE u.activo=true ORDER BY d.id DESC"); res.json(r.rows); }
   catch(e) { res.status(500).json({ error: e.message }); }
@@ -256,7 +342,7 @@ app.get('/api/fotos_servicio', verificarToken, async (req, res) => {
   catch(e) { res.status(500).json({ error: e.message }); }
 });
 // ─── WORKER RUTAS ────────────────────────────────────────────────────────────
-app.get('/api/worker/disponibles', verificarToken, async (req, res) => {
+app.get('/api/worker/disponibles', verificarToken, exigirRol('worker'), async (req, res) => {
   try {
     const r = await pool.query(
       "SELECT * FROM servicios WHERE estado='buscando_worker' ORDER BY id DESC"
@@ -265,7 +351,7 @@ app.get('/api/worker/disponibles', verificarToken, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/worker/aceptar/:id', verificarToken, async (req, res) => {
+app.post('/api/worker/aceptar/:id', verificarToken, exigirRol('worker'), async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM servicios WHERE id=$1', [req.params.id]);
     const s = rows[0];
@@ -279,4 +365,6 @@ app.post('/api/worker/aceptar/:id', verificarToken, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log('Aseada v3.0 PostgreSQL + Flow corriendo en puerto ' + PORT));
+prepararEsquema()
+  .catch((error) => console.warn('No se pudo actualizar el esquema automáticamente:', error.message))
+  .finally(() => app.listen(PORT, '0.0.0.0', () => console.log('Aseada v3.0 PostgreSQL + Flow corriendo en puerto ' + PORT)));

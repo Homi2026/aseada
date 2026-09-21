@@ -439,6 +439,20 @@ app.post('/api/worker/aceptar/:id', verificarToken, exigirRol('worker'), async (
 // que el cliente siempre pueda parsear la respuesta.
 app.use((req, res) => res.status(404).json({ error: `Ruta no encontrada: ${req.method} ${req.path}` }));
 
+// Cualquier error que llegue hasta aca tambien sale como JSON. Sin esto
+// Express responde su pagina HTML por defecto, que incluye el stack trace con
+// las rutas absolutas del servidor: el cliente no puede parsearla y ademas
+// expone la estructura interna.
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  // body-parser marca asi un JSON malformado en el cuerpo del request.
+  if (error.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'El cuerpo de la solicitud no es JSON válido' });
+  }
+  console.error('[aseada] error no controlado:', error.stack || error.message);
+  res.status(500).json({ error: 'Error interno del servidor' });
+});
+
 module.exports = app;
 
 // Solo al ejecutar `node server.js` directamente. Bajo Vercel el archivo se

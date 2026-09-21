@@ -8,11 +8,26 @@ const crypto = require('crypto');
 const axios = require('axios');
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) throw new Error('Falta la variable de entorno JWT_SECRET. Sin ella cualquiera podria firmar tokens validos, asi que el servidor no arranca.');
+function requerida(nombre, motivo) {
+  const valor = process.env[nombre];
+  if (!valor) throw new Error(`Falta la variable de entorno ${nombre}. ${motivo}`);
+  return valor;
+}
+
+const JWT_SECRET = requerida('JWT_SECRET', 'Sin ella cualquiera podria firmar tokens validos, asi que el servidor no arranca.');
+requerida('DATABASE_URL', 'Sin ella ninguna ruta puede consultar la base de datos.');
+
+// Flow es opcional al arrancar: solo las rutas de pago lo necesitan.
 const FLOW_API_KEY = process.env.FLOW_API_KEY;
 const FLOW_SECRET = process.env.FLOW_SECRET_KEY;
 const FLOW_API_URL = process.env.FLOW_API_URL || 'https://www.flow.cl/api';
+const FLOW_CONFIGURADO = Boolean(FLOW_API_KEY && FLOW_SECRET);
+if (!FLOW_CONFIGURADO) console.warn('[aseada] FLOW_API_KEY o FLOW_SECRET_KEY no configuradas: las rutas de pago responderan 503.');
+
+const exigirFlow = (req, res, next) => {
+  if (!FLOW_CONFIGURADO) return res.status(503).json({ error: 'Los pagos no estan disponibles: falta configurar FLOW_API_KEY y FLOW_SECRET_KEY en el servidor.' });
+  next();
+};
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 app.use(cors());
 app.use(express.json());
@@ -241,7 +256,7 @@ app.put('/api/servicios/:id/completar', verificarToken, async (req, res) => {
 });
 
 // ─── FLOW PAGOS ───────────────────────────────────────────────────────────────
-app.post('/api/pagos/crear', verificarToken, async (req, res) => {
+app.post('/api/pagos/crear', exigirFlow, verificarToken, async (req, res) => {
   try {
     const { servicio_id } = req.body;
     const { rows } = await pool.query('SELECT * FROM servicios WHERE id=$1 AND cliente_id=$2', [servicio_id, req.usuario.id]);
@@ -266,7 +281,7 @@ app.post('/api/pagos/crear', verificarToken, async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/pagos/flow/confirmacion', async (req, res) => {
+app.post('/pagos/flow/confirmacion', exigirFlow, async (req, res) => {
   try {
     const { token } = req.body;
     const flowData = await flowGet('/payment/getStatus', { token });
@@ -283,7 +298,7 @@ app.post('/pagos/flow/confirmacion', async (req, res) => {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/pagos/flow/retorno', async (req, res) => {
+app.get('/pagos/flow/retorno', exigirFlow, async (req, res) => {
   try {
     const { token } = req.query;
     const flowData = await flowGet('/payment/getStatus', { token });
@@ -295,7 +310,7 @@ app.get('/pagos/flow/retorno', async (req, res) => {
   } catch(e) { res.redirect('aseada://pago-rechazado'); }
 });
 
-app.post('/api/pagos/liberar/:servicio_id', verificarToken, async (req, res) => {
+app.post('/api/pagos/liberar/:servicio_id', exigirFlow, verificarToken, async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT s.*, p.id as pago_id, p.pago_worker, u.email as worker_email FROM servicios s JOIN pagos p ON p.servicio_id=s.id JOIN usuarios u ON u.id=s.worker_id WHERE s.id=$1', [req.params.servicio_id]);
     const s = rows[0];

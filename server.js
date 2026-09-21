@@ -512,6 +512,10 @@ app.use((error, req, res, next) => {
 });
 
 module.exports = app;
+// La tarifa es lo que ve el cliente antes de contratar y lo que determina
+// cuanto recibe el aseador, asi que se expone aparte para poder probarla sin
+// levantar el servidor ni tocar la base.
+module.exports.calcularPrecio = calcularPrecio;
 
 // Solo al ejecutar `node server.js` directamente. Bajo Vercel el archivo se
 // importa como modulo y la plataforma maneja el ciclo de vida del request,

@@ -72,3 +72,23 @@ test('el 503 de pagos nombra solo las variables que faltan', async () => {
     assert.doesNotMatch(error, /PUBLIC_URL/);
   });
 });
+
+// Flow devuelve al navegador con POST despues de pagar. Si la ruta solo
+// acepta GET, el cliente cae en un 404 recien pagado. Aca Flow no esta
+// configurado, asi que la respuesta esperada es el 503 de exigirFlow: lo que
+// importa es que la ruta exista para POST, no que sea 404.
+test('el retorno de Flow acepta POST, no solo GET', async () => {
+  await conServidor(async (base) => {
+    for (const method of ['POST', 'GET']) {
+      const res = await fetch(`${base}/pagos/flow/retorno`, {
+        method,
+        redirect: 'manual',
+        ...(method === 'POST' && {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'token=abc'
+        })
+      });
+      assert.notEqual(res.status, 404, `${method} /pagos/flow/retorno no deberia ser 404`);
+    }
+  });
+});

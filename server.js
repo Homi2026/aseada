@@ -184,19 +184,52 @@ function flowSign(params) {
   return crypto.createHmac('sha256', FLOW_SECRET).update(msg).digest('hex');
 }
 
+// Flow explica sus rechazos en el cuerpo ({ code, message }), pero axios los
+// reduce a "Request failed with status code 400". Sin esto un cliente con el
+// email mal escrito no sabia que corregir, y en los logs no quedaba el motivo.
+class FlowError extends Error {
+  constructor(error) {
+    const cuerpo = error.response?.data;
+    super(cuerpo?.message || error.message);
+    this.name = 'FlowError';
+    this.codigoFlow = cuerpo?.code;
+    // 4xx de Flow = el dato que mandamos esta mal (lo puede corregir quien
+    // paga). Cualquier otra cosa = Flow fallo o no respondio.
+    const status = error.response?.status;
+    this.esDelCliente = status >= 400 && status < 500;
+  }
+}
+
+async function llamarFlow(peticion) {
+  try { return (await peticion()).data; }
+  catch (error) { throw new FlowError(error); }
+}
+
 async function flowPost(endpoint, params) {
   params.apiKey = FLOW_API_KEY;
   params.s = flowSign(params);
   const form = new URLSearchParams(params);
-  const r = await axios.post(`${FLOW_API_URL}${endpoint}`, form.toString(), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
-  return r.data;
+  return llamarFlow(() => axios.post(`${FLOW_API_URL}${endpoint}`, form.toString(), { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 20000 }));
 }
 
 async function flowGet(endpoint, params) {
   params.apiKey = FLOW_API_KEY;
   params.s = flowSign(params);
-  const r = await axios.get(`${FLOW_API_URL}${endpoint}`, { params });
-  return r.data;
+  return llamarFlow(() => axios.get(`${FLOW_API_URL}${endpoint}`, { params, timeout: 20000 }));
+}
+
+/** Respuesta HTTP para un error al hablar con Flow. */
+function responderErrorFlow(res, error) {
+  if (!(error instanceof FlowError)) return res.status(500).json({ error: error.message });
+  console.error(`[aseada] Flow rechazo la operacion (codigo ${error.codigoFlow}):`, error.message);
+  // El email invalido es el rechazo mas probable y el unico que el cliente
+  // resuelve solo: se lo decimos en su idioma.
+  if (error.codigoFlow === 1620) {
+    return res.status(400).json({ error: 'Flow no acepta el email de tu cuenta para pagar. Revisa que este bien escrito.' });
+  }
+  return error.esDelCliente
+    ? res.status(400).json({ error: `Flow rechazo el pago: ${error.message}` })
+    : res.status(502).json({ error: 'No pudimos comunicarnos con Flow. Intenta de nuevo en unos minutos.' });
 }
 
 // ─── AUTH MIDDLEWARE ─────────────────────────────────────────────────────────
@@ -344,7 +377,7 @@ app.post('/api/pagos/crear', exigirFlow, verificarToken, async (req, res) => {
       [servicio_id, req.usuario.id, s.total_cliente, s.comision, s.worker_recibe, 'pendiente', flowData.token, comercialId]
     );
     res.json({ url_pago: `${flowData.url}?token=${flowData.token}`, token: flowData.token });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { responderErrorFlow(res, e); }
 });
 
 app.post('/pagos/flow/confirmacion', exigirFlow, async (req, res) => {
@@ -361,7 +394,7 @@ app.post('/pagos/flow/confirmacion', exigirFlow, async (req, res) => {
       await pool.query("UPDATE pagos SET estado='rechazado' WHERE flow_token=$1", [token]);
     }
     res.json({ ok: true });
-  } catch(e) { res.status(500).json({ error: e.message }); }
+  } catch(e) { responderErrorFlow(res, e); }
 });
 
 // Adonde vuelve el usuario despues de pagar. Flow trae de vuelta al
@@ -520,6 +553,9 @@ module.exports = app;
 // cuanto recibe el aseador, asi que se expone aparte para poder probarla sin
 // levantar el servidor ni tocar la base.
 module.exports.calcularPrecio = calcularPrecio;
+// Expuestos para probar como se traducen los rechazos de Flow.
+module.exports.FlowError = FlowError;
+module.exports.responderErrorFlow = responderErrorFlow;
 
 // Solo al ejecutar `node server.js` directamente. Bajo Vercel el archivo se
 // importa como modulo y la plataforma maneja el ciclo de vida del request,

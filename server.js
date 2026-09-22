@@ -9,6 +9,7 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const crypto = require('crypto');
 const axios = require('axios');
+const pagosTrabajador = require('./pagos-trabajador');
 const app = express();
 const PORT = process.env.PORT || 3000;
 function requerida(nombre, motivo) {
@@ -42,6 +43,17 @@ const FALTA_PARA_FLOW = [
 ].filter(Boolean);
 const FLOW_CONFIGURADO = FALTA_PARA_FLOW.length === 0;
 if (!FLOW_CONFIGURADO) console.warn(`[aseada] faltan ${FALTA_PARA_FLOW.join(', ')}: las rutas de pago responderan 503.`);
+
+// Si Aseada retiene el 15,25% de honorarios y lo paga al SII (transfiere el
+// liquido) o si el trabajador declara por su cuenta (transfiere el bruto).
+// Depende de si Aseada contrata al trabajador o solo intermedia, algo que
+// debe definir un contador. Mientras tanto, false: coincide con los precios
+// actuales, que cobran IVA solo sobre la comision.
+const ASEADA_RETIENE_HONORARIOS = process.env.ASEADA_RETIENE_HONORARIOS === 'true';
+
+// Protege el proceso diario de liberacion. Vercel lo manda como
+// "Authorization: Bearer <CRON_SECRET>" en cada ejecucion programada.
+const CRON_SECRET = process.env.CRON_SECRET;
 
 const exigirFlow = (req, res, next) => {
   // Nombrar solo lo que falta de verdad: una lista fija manda a revisar
@@ -174,6 +186,51 @@ async function notificarWorkers(servicio) {
   } catch (error) {
     console.warn('No se pudieron crear notificaciones; el polling de trabajos sigue activo:', error.message);
   }
+}
+
+const pesos = (n) => '$' + Number(n || 0).toLocaleString('es-CL');
+
+function fechaChile(fecha) {
+  return new Date(fecha).toLocaleString('es-CL', {
+    timeZone: 'America/Santiago', weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+/**
+ * Deja una notificacion en la app y, si el usuario registro su telefono,
+ * la manda como push. Nunca lanza: un aviso que falla no debe tumbar la
+ * operacion que lo origino (un pago, una confirmacion).
+ */
+async function notificar(usuarioIds, tipo, titulo, mensaje, datos = {}) {
+  const ids = [].concat(usuarioIds).filter(Boolean);
+  if (ids.length === 0) return;
+  try {
+    await pool.query(
+      `INSERT INTO notificaciones(usuario_id, tipo, titulo, mensaje)
+       SELECT id, $2, $3, $4 FROM usuarios WHERE id = ANY($1::int[])`, [ids, tipo, titulo, mensaje]);
+    const { rows } = await pool.query('SELECT push_token FROM usuarios WHERE id = ANY($1::int[]) AND push_token IS NOT NULL', [ids]);
+    await Promise.all(rows.map(({ push_token }) => axios.post('https://exp.host/--/api/v2/push/send',
+      { to: push_token, title: titulo, body: mensaje, sound: 'default', data: { tipo, ...datos } }, { timeout: 10000 })
+      .catch((error) => console.warn('No se pudo enviar push:', error.message))));
+  } catch (error) {
+    console.warn(`[aseada] no se pudo notificar (${tipo}):`, error.message);
+  }
+}
+
+async function idsAdmins() {
+  const { rows } = await pool.query("SELECT id FROM usuarios WHERE rol='admin' AND activo=true");
+  return rows.map((r) => r.id);
+}
+
+/** Aviso al trabajador de que su pago quedo liberado, con la fecha real. */
+async function avisarPagoLiberado({ servicio, transferencia }) {
+  if (!transferencia) return;
+  const cuando = transferencia.estado === 'por_transferir'
+    ? 'Te lo transferimos dentro de las próximas 24 horas.'
+    : `Flow nos deposita el ${fechaChile(transferencia.disponible_desde)}; te lo transferimos dentro de las 24 horas siguientes.`;
+  await notificar(servicio.worker_id, 'pago_liberado', 'Tu pago fue liberado',
+    `El servicio #${servicio.id} quedó confirmado. Recibirás ${pesos(transferencia.monto_a_transferir)}. ${cuando}`,
+    { servicio_id: servicio.id });
 }
 
 // ─── FLOW HELPERS ────────────────────────────────────────────────────────────
@@ -324,7 +381,9 @@ app.post('/api/servicios', verificarToken, async (req, res) => {
 app.get('/api/servicios', verificarToken, async (req, res) => {
   try {
     const query = req.usuario.rol === 'worker'
-      ? "SELECT * FROM servicios WHERE estado IN ('buscando_worker', 'pendiente_pago') OR worker_id=$1 ORDER BY id DESC"
+      // Solo trabajos ya pagados: un servicio en pendiente_pago puede no
+      // pagarse nunca, y el trabajador no debe ir a hacer algo sin cobro asegurado.
+      ? "SELECT * FROM servicios WHERE estado = 'buscando_worker' OR worker_id=$1 ORDER BY id DESC"
       : 'SELECT * FROM servicios WHERE cliente_id=$1 ORDER BY id DESC';
     const r = await pool.query(query, [req.usuario.id]);
     res.json(r.rows);
@@ -335,7 +394,12 @@ app.get('/api/servicios', verificarToken, async (req, res) => {
 app.get('/api/mis-servicios', verificarToken, async (req, res) => {
   try {
     const col = req.usuario.rol === 'worker' ? 'worker_id' : 'cliente_id';
-    const r = await pool.query(`SELECT * FROM servicios WHERE ${col}=$1 ORDER BY id DESC`, [req.usuario.id]);
+    // El trabajador ve tambien en que va su pago de cada servicio.
+    const r = await pool.query(
+      `SELECT s.*, t.estado AS pago_trabajador_estado, t.monto_a_transferir AS pago_trabajador_monto,
+              t.disponible_desde AS pago_trabajador_disponible, t.transferido_en AS pago_trabajador_transferido_en
+       FROM servicios s LEFT JOIN transferencias_trabajador t ON t.servicio_id = s.id AND s.worker_id = $1
+       WHERE s.${col}=$1 ORDER BY s.id DESC`, [req.usuario.id]);
     res.json(r.rows);
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
@@ -350,7 +414,43 @@ app.put('/api/servicios/:id/completar', verificarToken, async (req, res) => {
     if (s.worker_id !== req.usuario.id) return res.status(403).json({ error: 'Solo el aseador asignado puede completar este servicio' });
     if (s.estado !== 'en_proceso') return res.status(400).json({ error: 'El servicio no está en proceso' });
     await pool.query("UPDATE servicios SET estado='completado', completado_en=NOW() WHERE id=$1", [req.params.id]);
-    res.json({ mensaje: 'Servicio completado — pago será liberado al worker' });
+    await notificar(s.cliente_id, 'servicio_terminado', '¿Quedó todo bien?',
+      `El trabajador marcó el servicio #${s.id} como terminado. Confírmalo o repórtanos un problema en la app. Si no nos dices nada, lo daremos por conforme en ${pagosTrabajador.HORAS_REVISION} horas.`,
+      { servicio_id: s.id });
+    res.json({ mensaje: `Servicio terminado. El cliente tiene ${pagosTrabajador.HORAS_REVISION} horas para confirmarlo; después se libera tu pago.` });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// El cliente confirma que el servicio quedo bien y libera el pago.
+async function confirmarServicio(req, res) {
+  try {
+    const servicioId = Number(req.params.id || req.params.servicio_id);
+    const { rows: [s] } = await pool.query('SELECT cliente_id, estado FROM servicios WHERE id=$1', [servicioId]);
+    if (!s) return res.status(404).json({ error: 'Servicio no encontrado' });
+    if (s.cliente_id !== req.usuario.id) return res.status(403).json({ error: 'Solo el cliente del servicio puede confirmarlo' });
+    if (s.estado !== 'completado') return res.status(400).json({ error: 'El trabajador todavía no marcó el servicio como terminado' });
+
+    const r = await pagosTrabajador.liberarServicio(pool, servicioId, { origen: 'cliente', aseadaRetiene: ASEADA_RETIENE_HONORARIOS });
+    if (!r) return res.status(409).json({ error: 'El pago de este servicio ya fue liberado' });
+    await avisarPagoLiberado(r);
+    res.json({ mensaje: '¡Gracias! Confirmaste el servicio y liberamos el pago al trabajador.', servicio: r.servicio });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+}
+app.post('/api/servicios/:id/confirmar', verificarToken, exigirRol('cliente'), confirmarServicio);
+
+// El cliente reporta un problema: el pago queda retenido hasta resolverlo.
+app.post('/api/servicios/:id/reclamo', verificarToken, exigirRol('cliente'), async (req, res) => {
+  try {
+    const r = await pagosTrabajador.reclamar(pool, Number(req.params.id), req.usuario.id,
+      { motivo: req.body?.motivo, detalle: req.body?.detalle });
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    await notificar(await idsAdmins(), 'reclamo', `Reclamo en el servicio #${r.servicio.id}`,
+      `Motivo: ${r.servicio.reclamo_motivo}. ${r.servicio.reclamo_detalle || ''}`.trim(), { servicio_id: r.servicio.id });
+    if (r.servicio.worker_id) {
+      await notificar(r.servicio.worker_id, 'reclamo', 'El cliente reportó un problema',
+        `El pago del servicio #${r.servicio.id} queda retenido mientras lo revisamos. Te contactaremos.`, { servicio_id: r.servicio.id });
+    }
+    res.json({ mensaje: 'Recibimos tu reclamo. Tu pago queda retenido y te contactaremos para resolverlo; si el servicio no se realizó, te devolvemos el dinero.', servicio: r.servicio });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -385,10 +485,18 @@ app.post('/pagos/flow/confirmacion', exigirFlow, async (req, res) => {
     const { token } = req.body;
     const flowData = await flowGet('/payment/getStatus', { token });
     if (flowData.status === 2) {
-      await pool.query("UPDATE pagos SET estado='pagado', pagado_en=NOW() WHERE flow_token=$1", [token]);
-      const { rows } = await pool.query('SELECT * FROM pagos WHERE flow_token=$1', [token]);
-      if (rows[0]) {
-        await pool.query("UPDATE servicios SET estado='buscando_worker' WHERE id=$1", [rows[0].servicio_id]);
+      // Solo la primera confirmacion cambia el estado: Flow puede reintentar
+      // el aviso y no debe repetir notificaciones ni volver atras un servicio.
+      const { rows: [pago] } = await pool.query(
+        "UPDATE pagos SET estado='pagado', pagado_en=NOW() WHERE flow_token=$1 AND estado='pendiente' RETURNING *", [token]);
+      // Cuanto cobro Flow, cuanto deposita y cuando: sin esto no se sabria
+      // cuando la plata esta de verdad en la cuenta de Aseada.
+      await pagosTrabajador.registrarDatosFlow(pool, token, flowData.paymentData);
+      if (pago) {
+        await pool.query("UPDATE servicios SET estado='buscando_worker' WHERE id=$1 AND estado='pendiente_pago'", [pago.servicio_id]);
+        await notificar(pago.cliente_id, 'pago_recibido', 'Recibimos tu pago',
+          `Tu pago de ${pesos(pago.monto_total)} quedó retenido por Aseada. El trabajador solo lo recibe cuando confirmes que el servicio se hizo; si no se realiza o hay un problema, te devolvemos el dinero.`,
+          { servicio_id: pago.servicio_id });
       }
     } else if (flowData.status === 3) {
       await pool.query("UPDATE pagos SET estado='rechazado' WHERE flow_token=$1", [token]);
@@ -421,20 +529,85 @@ app.all('/pagos/flow/retorno', exigirFlow, async (req, res) => {
   }
 });
 
-app.post('/api/pagos/liberar/:servicio_id', exigirFlow, verificarToken, async (req, res) => {
+// Ruta anterior a /api/servicios/:id/confirmar. Se mantiene por
+// compatibilidad, pero ahora pasa por la misma liberacion: solo el cliente
+// que pago, y la transferencia al trabajador espera el deposito de Flow.
+app.post('/api/pagos/liberar/:servicio_id', verificarToken, exigirRol('cliente'), confirmarServicio);
+
+// ─── PROCESO DIARIO ──────────────────────────────────────────────────────────
+// Libera los servicios que el cliente no confirmo ni reclamo en 24 h, y marca
+// como listas para transferir las que Flow ya deposito. Lo ejecuta Vercel
+// Cron (vercel.json); tambien corre cada vez que un administrador abre la
+// lista de transferencias, para que nunca vea datos atrasados.
+async function procesoDiario() {
+  const liberados = await pagosTrabajador.liberarVencidos(pool, { aseadaRetiene: ASEADA_RETIENE_HONORARIOS });
+  for (const r of liberados) await avisarPagoLiberado(r);
+  const disponibles = await pagosTrabajador.marcarFondosDisponibles(pool);
+  if (disponibles.length > 0) {
+    const total = disponibles.reduce((suma, t) => suma + t.monto_a_transferir, 0);
+    await notificar(await idsAdmins(), 'transferencias_pendientes', 'Hay pagos listos para transferir',
+      `${disponibles.length} pago(s) a trabajadores por ${pesos(total)}: Flow ya depositó ese dinero.`);
+  }
+  return { liberados: liberados.length, disponibles: disponibles.length };
+}
+
+app.get('/api/cron/diario', async (req, res) => {
+  // Sin secreto configurado no se ejecuta: el proceso mueve estados de pago.
+  if (!CRON_SECRET) return res.status(503).json({ error: 'Falta configurar CRON_SECRET en el servidor.' });
+  if (req.headers.authorization !== `Bearer ${CRON_SECRET}`) return res.status(401).json({ error: 'No autorizado' });
+  try { res.json(await procesoDiario()); }
+  catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── ADMINISTRACION ──────────────────────────────────────────────────────────
+app.get('/api/admin/transferencias', verificarToken, exigirRol('admin'), async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT s.*, p.id as pago_id, p.pago_worker, u.email as worker_email FROM servicios s JOIN pagos p ON p.servicio_id=s.id JOIN usuarios u ON u.id=s.worker_id WHERE s.id=$1', [req.params.servicio_id]);
-    const s = rows[0];
-    if (!s) return res.status(404).json({ error: 'Servicio no encontrado' });
-    // Por aca sale el dinero del escrow. Solo el cliente que pago puede
-    // liberarlo; sin esta comprobacion cualquier sesion valida podia cobrar
-    // el servicio de otra persona.
-    if (s.cliente_id !== req.usuario.id) return res.status(403).json({ error: 'Solo el cliente del servicio puede liberar el pago' });
-    if (s.estado !== 'completado') return res.status(400).json({ error: 'El servicio no está completado' });
-    await pool.query("UPDATE pagos SET estado='liberado', liberado_en=NOW() WHERE id=$1", [s.pago_id]);
-    await pool.query("UPDATE servicios SET estado='pagado' WHERE id=$1", [req.params.servicio_id]);
-    await pool.query('UPDATE usuarios SET total_servicios=total_servicios+1 WHERE id=$1', [s.worker_id]);
-    res.json({ mensaje: 'Pago liberado al worker', monto: s.pago_worker, worker: s.worker_email });
+    await procesoDiario();
+    res.json(await pagosTrabajador.listarPendientes(pool));
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/transferencias/:id/transferida', verificarToken, exigirRol('admin'), async (req, res) => {
+  try {
+    const t = await pagosTrabajador.marcarTransferida(pool, Number(req.params.id), { referencia: req.body?.referencia });
+    if (!t) return res.status(400).json({ error: 'La transferencia no existe, ya se marcó, o Flow todavía no deposita ese dinero' });
+    await notificar(t.worker_id, 'pago_transferido', 'Te transferimos tu pago',
+      `Te transferimos ${pesos(t.monto_a_transferir)} por el servicio #${t.servicio_id}.`, { servicio_id: t.servicio_id });
+    res.json(t);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/reclamos', verificarToken, exigirRol('admin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT s.*, c.nombre AS cliente_nombre, c.email AS cliente_email, c.telefono AS cliente_telefono,
+              w.nombre AS worker_nombre, w.telefono AS worker_telefono, p.flow_order
+       FROM servicios s JOIN usuarios c ON c.id=s.cliente_id LEFT JOIN usuarios w ON w.id=s.worker_id
+       LEFT JOIN pagos p ON p.servicio_id=s.id AND p.estado='pagado'
+       WHERE s.estado='en_reclamo' ORDER BY s.reclamo_en`);
+    res.json(rows);
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/servicios/:id/resolver', verificarToken, exigirRol('admin'), async (req, res) => {
+  try {
+    const accion = req.body?.accion;
+    const r = await pagosTrabajador.resolverReclamo(pool, Number(req.params.id), accion, { aseadaRetiene: ASEADA_RETIENE_HONORARIOS });
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    const s = r.resultado.servicio;
+    if (accion === 'liberar') {
+      await avisarPagoLiberado(r.resultado);
+      await notificar(s.cliente_id, 'reclamo_resuelto', 'Revisamos tu reclamo',
+        `Resolvimos el reclamo del servicio #${s.id} y liberamos el pago al trabajador.`, { servicio_id: s.id });
+    } else {
+      await notificar(s.cliente_id, 'reembolso', 'Te devolvemos tu dinero',
+        `Aprobamos la devolución de ${pesos(r.resultado.pago.monto_total)} por el servicio #${s.id}. Flow la procesa en los próximos días.`, { servicio_id: s.id });
+    }
+    res.json({
+      ...r.resultado,
+      // La devolucion no se hace sola: hay que ejecutarla en el panel de Flow.
+      ...(accion === 'reembolsar' && { pendiente: `Haz la devolución en el panel de Flow: orden ${r.resultado.pago.flow_order}.` })
+    });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -470,15 +643,25 @@ app.get('/api/notificaciones', verificarToken, async (req, res) => {
 // se defina la relacion juridica, la plataforma no puede ofrecer otra.
 app.post('/api/worker/perfil', verificarToken, exigirRol('worker'), async (req, res) => {
   try {
-    const { modalidad = 'independiente', acepta_boleta = false, comuna, experiencia } = req.body;
+    const { modalidad = 'independiente', acepta_boleta = false, comuna, experiencia, rut, banco, tipo_cuenta, numero_cuenta } = req.body;
     if (modalidad !== 'independiente' || acepta_boleta !== true) {
       return res.status(400).json({ error: 'Debes aceptar trabajar como prestador independiente y emitir boleta de honorarios' });
     }
+    // Datos para transferirle. Son opcionales al guardar el perfil, pero sin
+    // ellos no se le puede pagar: la lista de transferencias lo marca.
+    const limpio = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+    if (tipo_cuenta && !['corriente', 'vista', 'ahorro'].includes(tipo_cuenta)) {
+      return res.status(400).json({ error: 'El tipo de cuenta debe ser corriente, vista o ahorro' });
+    }
+    if (limpio(rut) && !/^\d{1,2}\.?\d{3}\.?\d{3}-[\dkK]$/.test(limpio(rut))) {
+      return res.status(400).json({ error: 'El RUT debe tener el formato 12.345.678-9' });
+    }
     const r = await pool.query(
       `UPDATE usuarios
-       SET modalidad=$1, acepta_boleta=true, comuna=$2, experiencia=$3, perfil_pago_completo=true
+       SET modalidad=$1, acepta_boleta=true, comuna=$2, experiencia=$3, perfil_pago_completo=true,
+           rut=COALESCE($5, rut), banco=COALESCE($6, banco), tipo_cuenta=COALESCE($7, tipo_cuenta), numero_cuenta=COALESCE($8, numero_cuenta)
        WHERE id=$4 RETURNING perfil_pago_completo`,
-      [modalidad, comuna || '', experiencia || '', req.usuario.id]
+      [modalidad, comuna || '', experiencia || '', req.usuario.id, limpio(rut), limpio(banco), tipo_cuenta || null, limpio(numero_cuenta)]
     );
     if (r.rowCount === 0) return res.status(404).json({ error: 'Trabajador no encontrado' });
     res.json({ ok: true, perfil_pago_completo: r.rows[0].perfil_pago_completo });

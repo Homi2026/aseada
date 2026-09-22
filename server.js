@@ -406,15 +406,18 @@ function destinoTrasPago(resultado, token) {
   return APP_URL ? `${APP_URL}/cliente/historial${query}` : `aseada://pago-${resultado}${query}`;
 }
 
-app.get('/pagos/flow/retorno', exigirFlow, async (req, res) => {
+// Flow devuelve al navegador con un POST que trae el token en el cuerpo, no
+// con un GET: con solo app.get, el cliente terminaba en un 404 justo despues
+// de pagar. Se aceptan ambos para no depender de como llegue.
+app.all('/pagos/flow/retorno', exigirFlow, async (req, res) => {
   try {
-    const { token } = req.query;
+    const token = req.body?.token || req.query.token;
     const flowData = await flowGet('/payment/getStatus', { token });
     // status 2 = pagado, segun la API de Flow.
     res.redirect(destinoTrasPago(flowData.status === 2 ? 'exitoso' : 'rechazado', token));
   } catch (error) {
     console.error('[aseada] no se pudo verificar el pago al volver de Flow:', error.message);
-    res.redirect(destinoTrasPago('rechazado', req.query.token));
+    res.redirect(destinoTrasPago('rechazado', req.body?.token || req.query.token));
   }
 });
 

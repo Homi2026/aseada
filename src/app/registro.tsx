@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 import { router } from 'expo-router';
 import { api } from '../constants/api';
 import { guardarSesion } from '../constants/auth';
@@ -30,7 +30,8 @@ export default function Registro() {
         setError(res.error || 'No se pudo crear la cuenta.');
       }
     } catch (e: any) {
-      setError(e?.message?.includes('404') ? 'El servicio de cuentas todavía no está publicado.' : 'No se pudo conectar al servicio de cuentas.');
+      // El mensaje del servidor ("Email ya registrado") dice que corregir.
+      setError(e?.message || 'No se pudo conectar. Intenta nuevamente.');
     } finally {
       setLoading(false);
     }

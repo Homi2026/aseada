@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { api } from '../../constants/api';
 import { obtenerSesion, cerrarSesion } from '../../constants/auth';
+import { avisar, confirmar } from '../../constants/dialogos';
 import { registrarNotificaciones } from '../../constants/notifications';
 
 export default function HomeWorker() {
@@ -66,7 +67,8 @@ export default function HomeWorker() {
     try {
       const { token } = await obtenerSesion();
       const res = await api.get('/api/servicios', token!);
-      const pendientes = res.filter((s: any) => s.estado === 'buscando_worker' || s.estado === 'pendiente_pago');
+      // Solo trabajos ya pagados por el cliente.
+      const pendientes = res.filter((s: any) => s.estado === 'buscando_worker');
       setSolicitudes(pendientes);
       setAvisos(pendientes.length);
       if (pendientes.length > ultimoAviso.current) {
@@ -82,21 +84,20 @@ export default function HomeWorker() {
   const aceptar = async (servicioId: number, workerRecibe: number) => {
     const servicio = solicitudes.find((item) => item.id === servicioId);
     const detalle = liquidacion(servicio || { worker_recibe: workerRecibe });
-    Alert.alert('¿Aceptar trabajo?', `Recibirás aproximadamente $${detalle.liquido.toLocaleString('es-CL')} líquidos.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Aceptar', onPress: async () => {
-        setLoading(true);
-        try {
-          const { token } = await obtenerSesion();
-          await api.post(`/api/worker/aceptar/${servicioId}`, {}, token!);
-          cargarSolicitudes();
-          Alert.alert('¡Trabajo aceptado!', 'El cliente ha sido notificado');
-        } catch (e) {
-          Alert.alert('Error', 'No se pudo aceptar');
-        }
-        setLoading(false);
-      }}
-    ]);
+    const ok = await confirmar('¿Aceptar trabajo?',
+      `Recibirás aproximadamente $${detalle.liquido.toLocaleString('es-CL')} líquidos. El pago se libera cuando el cliente confirma que el servicio quedó bien, o solo a las 24 horas de que lo marques terminado.`,
+      'Aceptar');
+    if (!ok) return;
+    setLoading(true);
+    try {
+      const { token } = await obtenerSesion();
+      await api.post(`/api/worker/aceptar/${servicioId}`, {}, token!);
+      cargarSolicitudes();
+      avisar('¡Trabajo aceptado!', 'El cliente fue notificado. Cuando termines, márcalo como terminado en tu historial.');
+    } catch (e: any) {
+      avisar('No se pudo aceptar', e?.message || 'Intenta nuevamente.');
+    }
+    setLoading(false);
   };
 
   const salir = async () => {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { avisar } from '../../constants/dialogos';
 import { router } from 'expo-router';
 import { cerrarSesion, obtenerSesion } from '../../constants/auth';
 
@@ -30,7 +31,7 @@ export default function PerfilCliente() {
         <Text style={styles.value}>{usuario?.rol === 'worker' ? 'Aseador' : 'Cliente'}</Text>
       </View>
 
-      <TouchableOpacity style={styles.button} onPress={() => Alert.alert('Perfil', 'La edición de perfil estará disponible pronto')}>
+      <TouchableOpacity style={styles.button} onPress={() => avisar('Perfil', 'La edición de perfil estará disponible pronto.')}>
         <Text style={styles.buttonText}>Editar perfil</Text>
       </TouchableOpacity>
 

@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, TextInput } from 'react-native';
 import { router } from 'expo-router';
 import { api } from '../../constants/api';
 import { obtenerSesion } from '../../constants/auth';
+import { avisar, confirmar } from '../../constants/dialogos';
+import { GARANTIA, irAPagar } from '../../constants/pagos';
 
 const TAMANIOS = [
   { label: 'Departamento pequeño', metros: 40, horas: 3, icono: '🏠' },
@@ -29,32 +31,16 @@ export default function Solicitar() {
   const [precio, setPrecio] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  const calcularLocal = (metros: number, horasExtra: number, materiales: boolean, servicio: 'aseo' | 'fumigacion', plaga: string) => {
-    if (servicio === 'fumigacion') {
-      const tarifas: Record<string, number[]> = { insectos: [39900, 49900, 64900, 84900], roedores: [49900, 59900, 79900, 99900], mixto: [59900, 69900, 89900, 119900] };
-      const base = tarifas[plaga] || tarifas.insectos;
-      const index = metros <= 50 ? 0 : metros <= 100 ? 1 : metros <= 200 ? 2 : 3;
-      const precioBase = base[index];
-      const comision = Math.round(precioBase * 0.2);
-      const iva = Math.round(comision * 0.19);
-      const retencion_honorarios = Math.round(precioBase * 0.1525);
-      return { precio_base: precioBase, extra: 0, comision, iva, total_cliente: precioBase + comision + iva, worker_recibe: precioBase, retencion_honorarios, worker_liquido_estimado: precioBase - retencion_honorarios, horas_incluidas: null };
-    }
-    const base = metros <= 50 ? (materiales ? 30000 : 25000) : metros <= 80 ? (materiales ? 40000 : 35000) : metros <= 120 ? (materiales ? 50000 : 45000) : metros <= 200 ? (materiales ? 65000 : 60000) : (materiales ? 85000 : 80000);
-    const extra = [0, 8000, 15000, 21000][horasExtra] || 0;
-    const subtotal = base + extra;
-    const comision = Math.round(subtotal * 0.2);
-    const iva = Math.round(comision * 0.19);
-    const retencion_honorarios = Math.round(subtotal * 0.1525);
-    return { precio_base: base, extra, comision, iva, total_cliente: subtotal + comision + iva, worker_recibe: subtotal, retencion_honorarios, worker_liquido_estimado: subtotal - retencion_honorarios, horas_incluidas: metros <= 50 ? 3 : metros <= 120 ? 4 : metros <= 200 ? 5 : 6 };
-  };
-
+  // El precio lo calcula siempre el servidor, que es el mismo que despues
+  // cobra. Antes habia un calculo local de respaldo con tarifas antiguas: si
+  // la API fallaba, el cliente veia un total y se le cobraba otro.
   const calcular = async (t: any, h: number, m: boolean, servicio = tipoServicio, plaga = tipoPlaga) => {
     try {
       const res = await api.post('/api/calcular-precio', { metros: t.metros, horas_extra: h, con_materiales: m, tipo_servicio: servicio, tipo_plaga: plaga });
       setPrecio(res);
     } catch {
-      setPrecio(calcularLocal(t.metros, h, m, servicio, plaga));
+      setPrecio(null);
+      avisar('No pudimos calcular el precio', 'Revisa tu conexión e intenta nuevamente.');
     }
   };
 
@@ -84,21 +70,25 @@ export default function Solicitar() {
   };
 
   const solicitar = async () => {
-    if (!tamanio) return Alert.alert('Error', 'Selecciona el tamaño');
-    if (!direccion.trim()) return Alert.alert('Error', 'Ingresa la dirección del servicio');
+    if (!tamanio) return avisar('Falta un dato', 'Selecciona el tamaño del hogar.');
+    if (!direccion.trim()) return avisar('Falta un dato', 'Ingresa la dirección del servicio.');
+    if (!precio) return avisar('Falta el precio', 'Espera a que se calcule el precio antes de pagar.');
     const fecha = fechaServicio.trim()
       ? new Date(fechaServicio.includes('/') ? fechaServicio.split('/').reverse().join('-') : fechaServicio)
       : new Date();
-    if (Number.isNaN(fecha.getTime())) return Alert.alert('Error', 'La fecha no es válida');
+    if (Number.isNaN(fecha.getTime())) return avisar('Fecha inválida', 'Escríbela como 25/09/2026.');
     const { token } = await obtenerSesion();
     if (!token) {
-      Alert.alert('Inicia sesión para continuar', 'Necesitas una cuenta Aseada para solicitar un servicio.', [
-        { text: 'Crear cuenta', onPress: () => router.push('/registro') },
-        { text: 'Iniciar sesión', onPress: () => router.push('/login') },
-      ]);
+      const crear = await confirmar('Inicia sesión para continuar', 'Necesitas una cuenta Aseada para solicitar un servicio. ¿Quieres crear una ahora?', 'Crear cuenta');
+      router.push(crear ? '/registro' : '/login');
       return;
     }
+    // La garantia se muestra justo antes de cobrar, que es cuando pesa la duda.
+    const seguir = await confirmar(`Pagar $${precio.total_cliente.toLocaleString('es-CL')}`, GARANTIA, 'Ir a pagar');
+    if (!seguir) return;
+
     setLoading(true);
+    let servicioId: number | null = null;
     try {
       const res = await api.post('/api/servicios', {
         metros: tamanio.metros,
@@ -108,14 +98,16 @@ export default function Solicitar() {
         con_materiales: conMateriales,
         direccion: direccion.trim(),
         fecha_servicio: fecha.toISOString()
-      }, token!);
-      if (res.id) {
-        router.push({ pathname: '/cliente/buscando', params: { servicioId: res.id, total: precio.total_cliente } });
-      } else {
-        Alert.alert('Error', res.error || 'Error al crear servicio');
-      }
-    } catch (e) {
-      Alert.alert('Error', 'No se pudo conectar');
+      }, token);
+      servicioId = res.id;
+      await irAPagar(res.id, token);
+    } catch (e: any) {
+      // Si el servicio se creo pero el cobro fallo, queda pendiente de pago y
+      // se puede reintentar desde el historial.
+      avisar('No pudimos iniciar el pago', servicioId
+        ? `${e?.message || 'Intenta nuevamente.'}\n\nTu solicitud quedó guardada: puedes pagarla desde tu historial.`
+        : e?.message || 'No se pudo conectar. Intenta nuevamente.');
+      if (servicioId) router.replace('/cliente/historial');
     }
     setLoading(false);
   };
@@ -191,8 +183,15 @@ export default function Solicitar() {
       <TextInput style={styles.input} placeholder="Dirección del servicio" value={direccion} onChangeText={setDireccion} />
       <TextInput style={styles.input} placeholder="Fecha preferida (ej: 25/09/2026)" value={fechaServicio} onChangeText={setFechaServicio} />
 
-      <TouchableOpacity style={[styles.btn, (!tamanio || !direccion.trim()) && styles.btnDesactivado]} onPress={solicitar} disabled={!tamanio || !direccion.trim() || loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTexto}>Confirmar y buscar aseador</Text>}
+      <View style={styles.garantia}>
+        <Text style={styles.garantiaTitulo}>🛡️ Pago protegido</Text>
+        <Text style={styles.garantiaTexto}>{GARANTIA}</Text>
+      </View>
+
+      <TouchableOpacity style={[styles.btn, (!tamanio || !direccion.trim() || !precio) && styles.btnDesactivado]} onPress={solicitar} disabled={!tamanio || !direccion.trim() || !precio || loading}>
+        {loading ? <ActivityIndicator color="#fff" /> : (
+          <Text style={styles.btnTexto}>{precio ? `Pagar $${precio.total_cliente.toLocaleString('es-CL')} y buscar aseador` : 'Pagar y buscar aseador'}</Text>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );
@@ -222,6 +221,9 @@ const styles = StyleSheet.create({
   resumenTotal: { borderTopWidth: 1, borderTopColor: '#eee', paddingTop: 8, marginTop: 4 },
   totalTexto: { fontSize: 16, fontWeight: 'bold' },
   totalPrecio: { fontSize: 16, fontWeight: 'bold', color: '#6C63FF' },
+  garantia: { backgroundColor: '#eef7f0', borderRadius: 12, padding: 14, marginTop: 14, marginBottom: 14, borderWidth: 1, borderColor: '#cfe6d6' },
+  garantiaTitulo: { color: '#1f6b4f', fontSize: 15, fontWeight: 'bold', marginBottom: 6 },
+  garantiaTexto: { color: '#344238', fontSize: 13, lineHeight: 19 },
   btn: { backgroundColor: '#6C63FF', borderRadius: 12, padding: 18, alignItems: 'center', marginBottom: 40 },
   btnDesactivado: { backgroundColor: '#ccc' },
   btnTexto: { color: '#fff', fontSize: 16, fontWeight: 'bold' }

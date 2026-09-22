@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
 import { api } from '../constants/api';
 import { guardarSesion } from '../constants/auth';
+import { avisar } from '../constants/dialogos';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -10,18 +11,21 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const login = async () => {
-    if (!email || !password) return Alert.alert('Error', 'Ingresa email y contraseña');
+    if (!email || !password) return avisar('Faltan datos', 'Ingresa email y contraseña.');
     setLoading(true);
     try {
       const res = await api.post('/auth/login', { email, password });
       if (res.token) {
         await guardarSesion(res.token, res.usuario);
-        router.replace(res.usuario.rol === 'worker' ? '/worker/home' : '/cliente/home');
+        const inicio: Record<string, string> = { worker: '/worker/home', admin: '/admin' };
+        router.replace((inicio[res.usuario.rol] || '/cliente/home') as any);
       } else {
-        Alert.alert('Error', res.error || 'Credenciales incorrectas');
+        avisar('No pudimos iniciar sesión', res.error || 'Credenciales incorrectas.');
       }
-    } catch {
-      Alert.alert('Servicio temporalmente no disponible', 'La página está publicada, pero el backend todavía necesita conectarse a la base de datos de producción.');
+    } catch (e: any) {
+      // api.post lanza con el mensaje del servidor ("Credenciales incorrectas");
+      // sin mensaje, fue la conexion la que fallo.
+      avisar('No pudimos iniciar sesión', e?.message || 'No se pudo conectar. Intenta nuevamente.');
     } finally {
       setLoading(false);
     }

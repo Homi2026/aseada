@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.mjs",
-    "migrate": "node scripts/migrar.mjs"
+    "migrate": "node scripts/migrar.mjs",
+    "hacer-admin": "node scripts/hacer-admin.mjs"
   },
   "keywords": [],
   "author": "",

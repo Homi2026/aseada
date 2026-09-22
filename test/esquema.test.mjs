@@ -135,8 +135,10 @@ test('la base rechaza valores fuera de los estados validos', async () => {
     await assert.rejects(fn, `la base acepto ${descripcion}`);
   };
 
+  // 'admin' existe desde la migracion 002; el registro publico igual lo
+  // rechaza, pero en la base es un rol valido.
   await rechaza('un rol inexistente', () => db.query(
-    "INSERT INTO usuarios(nombre,email,password,rol) VALUES('X','x@t.cl','h','admin')"));
+    "INSERT INTO usuarios(nombre,email,password,rol) VALUES('X','x@t.cl','h','superusuario')"));
 
   await rechaza('un email repetido', () => db.query(
     "INSERT INTO usuarios(nombre,email,password,rol) VALUES('X','a@t.cl','h','cliente')"));

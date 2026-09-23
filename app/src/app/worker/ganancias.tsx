@@ -1,38 +1,52 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { api } from '../../constants/api';
-import { obtenerSesion } from '../../constants/auth';
+import { api, esSesionVencida } from '../../constants/api';
+import { exigirSesion, volverAlLogin } from '../../constants/auth';
+import { EstadoError } from '../../components/estado-error';
 
 export default function GananciasWorker() {
   const [total, setTotal] = useState(0);
   const [trabajos, setTrabajos] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState('');
 
-  useEffect(() => {
-    const cargar = async () => {
-      try {
-        const { token } = await obtenerSesion();
-        const res = await api.get('/api/mis-servicios', token!);
-        const servicios = Array.isArray(res) ? res : [];
-        const pagados = servicios.filter((item: any) => ['completado', 'pagado'].includes(item.estado));
-        const suma = pagados.reduce((acc: number, item: any) => acc + Number(item.worker_liquido_estimado || (Number(item.worker_recibe || 0) - Number(item.retencion_honorarios || 0))), 0);
-        setTotal(suma);
-        setTrabajos(pagados.length);
-      } catch (error) {
-        setTotal(0);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    cargar();
+  const cargar = useCallback(async () => {
+    try {
+      const { token } = await exigirSesion();
+      const res = await api.get('/api/mis-servicios', token);
+      const servicios = Array.isArray(res) ? res : [];
+      const pagados = servicios.filter((item: any) => ['completado', 'pagado'].includes(item.estado));
+      const suma = pagados.reduce((acc: number, item: any) => acc + Number(item.worker_liquido_estimado || (Number(item.worker_recibe || 0) - Number(item.retencion_honorarios || 0))), 0);
+      setTotal(suma);
+      setTrabajos(pagados.length);
+      setErrorCarga('');
+    } catch (e: any) {
+      // Mostrar $0 cuando en realidad fallo la carga es mentirle al trabajador
+      // sobre su plata: se distingue el error del total real.
+      if (esSesionVencida(e)) return volverAlLogin();
+      setErrorCarga(e?.message || 'Revisa tu conexión e intenta nuevamente.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { cargar(); }, [cargar]);
 
   if (loading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#6C63FF" />
       </View>
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <EstadoError
+        titulo="No pudimos cargar tus ganancias"
+        mensaje={errorCarga}
+        onReintentar={() => { setLoading(true); cargar(); }}
+      />
     );
   }
 

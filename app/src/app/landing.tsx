@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 const colors = {
   ink: '#15201A',
@@ -21,12 +21,16 @@ const plans = [
   { size: 'Casa grande', coverage: 'Hasta 200 m²', duration: '5 horas', price: '$84.990' },
 ];
 
+// Los valores del ticket tienen que existir en la tabla de precios del
+// servidor: 65 m² de aseo sin materiales cae en el tramo de 80 m², que son
+// 4 horas incluidas y $43.330 finales para el cliente.
 const ticketRows = [
   { label: 'Servicio', value: 'Aseo profundo' },
   { label: 'Dónde', value: 'Providencia, 65 m²' },
   { label: 'Cuándo', value: 'Miércoles, 10:00' },
   { label: 'Aseador', value: 'María T. (4.9 ★)' },
 ];
+const TICKET_TOTAL = '$43.330';
 
 function TactileButton({
   label,
@@ -84,7 +88,10 @@ export default function Landing() {
             <TactileButton label="Solicitar un aseo" onPress={() => router.push('/registro')} variant="primary" />
             <TactileButton label="Quiero ser aseador" onPress={() => router.push('/registro')} variant="secondary" />
           </View>
-          <Text style={styles.note}>Por ahora, solo en Chile. Pago seguro, en camino.</Text>
+          <Text style={styles.note}>
+            Por ahora, solo en Chile. Tu pago queda retenido por Aseada: el aseador lo recibe cuando confirmas que
+            el servicio quedó bien.
+          </Text>
         </View>
 
         <View style={[styles.ticketZone, compact && styles.ticketZoneCompact]}>
@@ -110,7 +117,7 @@ export default function Landing() {
             <View style={styles.ticketDivider} />
             <View style={styles.ticketRow}>
               <Text style={styles.ticketTotalLabel}>Total</Text>
-              <Text style={styles.ticketTotalValue}>$34.990</Text>
+              <Text style={styles.ticketTotalValue}>{TICKET_TOTAL}</Text>
             </View>
           </View>
         </View>
@@ -186,11 +193,11 @@ export default function Landing() {
         <View style={styles.fumigationStats}>
           <View style={styles.fumigationStat}>
             <Text style={styles.fumigationStatLabel}>Insectos</Text>
-            <Text style={styles.fumigationStatValue}>desde $64.990</Text>
+            <Text style={styles.fumigationStatValue}>desde $59.990</Text>
           </View>
           <View style={styles.fumigationStat}>
             <Text style={styles.fumigationStatLabel}>Roedores</Text>
-            <Text style={styles.fumigationStatValue}>desde $74.990</Text>
+            <Text style={styles.fumigationStatValue}>desde $72.990</Text>
           </View>
         </View>
       </View>
@@ -205,9 +212,8 @@ export default function Landing() {
 
       <View style={[styles.footer, compact && styles.footerCompact]}>
         <Text style={styles.footerBrand}>Aseada</Text>
-        <Pressable onPress={() => Linking.openURL('https://www.instagram.com/')}>
-          <Text style={styles.footerLink}>Instagram</Text>
-        </Pressable>
+        {/* Sin enlace a redes hasta que exista la cuenta: el link apuntaba al
+            home de Instagram, no a un perfil de Aseada. */}
         <Text style={styles.footerText}>© 2026 Aseada</Text>
       </View>
     </ScrollView>
@@ -407,6 +413,5 @@ const styles = StyleSheet.create({
   },
   footerCompact: { paddingHorizontal: 28, flexWrap: 'wrap' },
   footerBrand: { color: colors.pine, fontSize: 16, fontWeight: '800' },
-  footerLink: { color: colors.slate, fontSize: 14 },
   footerText: { color: colors.slate, fontSize: 13, marginLeft: 'auto' },
 });

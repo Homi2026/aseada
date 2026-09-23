@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator,
 import { router } from 'expo-router';
 import { api } from '../constants/api';
 import { guardarSesion } from '../constants/auth';
+import { avisar } from '../constants/dialogos';
 
 export default function Registro() {
   const [nombre, setNombre] = useState('');
@@ -22,12 +23,19 @@ export default function Registro() {
     setLoading(true);
     try {
       const res = await api.post('/auth/registro', { nombre, email, password, telefono, rol });
-      if (res.token) {
+      if (res?.token) {
         await guardarSesion(res.token, res.usuario);
-        if (rol === 'worker') router.replace('/worker/home');
-        else router.replace('/cliente/home');
+        if (rol === 'worker') {
+          // La cuenta del aseador nace inactiva: hay que decirlo aca, o la
+          // pantalla de "cuenta en revision" llega como sorpresa.
+          avisar('Cuenta creada · en revisión',
+            'Revisamos a mano cada aseador nuevo antes de mostrarle trabajos. Te avisamos cuando quede activada. Mientras tanto, completa tu perfil para que la revisión sea más rápida.');
+          router.replace('/worker/home');
+        } else {
+          router.replace('/cliente/home');
+        }
       } else {
-        setError(res.error || 'No se pudo crear la cuenta.');
+        setError(res?.error || 'No se pudo crear la cuenta.');
       }
     } catch (e: any) {
       // El mensaje del servidor ("Email ya registrado") dice que corregir.

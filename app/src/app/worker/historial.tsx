@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { api } from '../../constants/api';
-import { obtenerSesion } from '../../constants/auth';
+import { api, esSesionVencida } from '../../constants/api';
+import { exigirSesion, volverAlLogin } from '../../constants/auth';
 import { avisar, confirmar } from '../../constants/dialogos';
+import { EstadoError } from '../../components/estado-error';
 
 const pesos = (n: any) => '$' + Number(n || 0).toLocaleString('es-CL');
 const fecha = (f: string) => new Date(f).toLocaleString('es-CL', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
@@ -33,15 +34,20 @@ function estadoPago(item: any): { texto: string; color: string } | null {
 export default function HistorialWorker() {
   const [servicios, setServicios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState('');
   const [ocupado, setOcupado] = useState<number | null>(null);
 
   const cargar = useCallback(async () => {
     try {
-      const { token } = await obtenerSesion();
-      const res = await api.get('/api/mis-servicios', token!);
+      const { token } = await exigirSesion();
+      const res = await api.get('/api/mis-servicios', token);
       setServicios(Array.isArray(res) ? res : []);
-    } catch {
-      setServicios([]);
+      setErrorCarga('');
+    } catch (e: any) {
+      // Sesion vencida y "no tienes trabajos" se veian igual: el trabajador
+      // creia que se le habia borrado el historial.
+      if (esSesionVencida(e)) return volverAlLogin();
+      setErrorCarga(e?.message || 'Revisa tu conexión e intenta nuevamente.');
     } finally {
       setLoading(false);
     }
@@ -56,11 +62,12 @@ export default function HistorialWorker() {
     if (!ok) return;
     setOcupado(id);
     try {
-      const { token } = await obtenerSesion();
-      const res = await api.request('PUT', `/api/servicios/${id}/completar`, {}, token!);
-      avisar('¡Listo!', res.mensaje);
+      const { token } = await exigirSesion();
+      const res = await api.request('PUT', `/api/servicios/${id}/completar`, {}, token);
+      avisar('¡Listo!', res?.mensaje || 'Marcamos el trabajo como terminado.');
       await cargar();
     } catch (e: any) {
+      if (esSesionVencida(e)) return volverAlLogin();
       avisar('No se pudo marcar', e?.message || 'Intenta nuevamente.');
     } finally {
       setOcupado(null);
@@ -72,6 +79,16 @@ export default function HistorialWorker() {
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#6C63FF" />
       </View>
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <EstadoError
+        titulo="No pudimos cargar tu historial"
+        mensaje={errorCarga}
+        onReintentar={() => { setLoading(true); cargar(); }}
+      />
     );
   }
 
@@ -96,7 +113,7 @@ export default function HistorialWorker() {
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Trabajo #{item.id}</Text>
                 <Text style={styles.cardText}>{item.tipo_servicio === 'fumigacion' ? `🪳 Fumigación · ${item.tipo_plaga || 'plaga'}` : '🧹 Aseo del hogar'}</Text>
-                <Text style={styles.cardText}>📍 {item.direccion || 'Sin dirección'}</Text>
+                <Text style={styles.cardText}>📍 {item.direccion || 'Dirección visible al aceptar'}</Text>
                 <Text style={styles.cardText}>🏠 {item.metros} m²</Text>
                 <Text style={styles.cardPrice}>{item.pago_trabajador_monto ? 'Recibirás' : 'Ganancia bruta'}: {pesos(monto)}</Text>
                 {pago && <Text style={[styles.pago, { color: pago.color }]}>{pago.texto}</Text>}

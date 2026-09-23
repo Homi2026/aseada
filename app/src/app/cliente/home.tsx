@@ -1,13 +1,18 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
-import { obtenerSesion, cerrarSesion } from '../../constants/auth';
+import { obtenerSesion, cerrarSesion, volverAlLogin } from '../../constants/auth';
 
 export default function HomeCliente() {
   const [usuario, setUsuario] = useState<any>(null);
 
   useEffect(() => {
-    obtenerSesion().then(({ usuario }) => setUsuario(usuario));
+    obtenerSesion().then(({ token, usuario }) => {
+      // Sin sesion esta pantalla saludaba a "undefined" y el boton de solicitar
+      // terminaba en un error del servidor. Mejor mandar al login de una.
+      if (!token) return volverAlLogin();
+      setUsuario(usuario);
+    });
   }, []);
 
   const salir = async () => {

@@ -1,0 +1,33 @@
+# Configuracion del escaneo de secretos que corre en CI (.github/workflows/ci.yml).
+#
+# Existe por un motivo concreto: el 20-05-2026 el commit 2c36c14 subio un .env
+# con las llaves de produccion de Flow y con el JWT_SECRET de produccion, y
+# estuvo cuatro meses publico. Con ese JWT_SECRET cualquiera firma un token de
+# administrador valido, asi que hay que rotarlo igual que las llaves de pago.
+# El runbook para rotar los tres valores y limpiar el historial esta en
+# docs/rotar-credenciales-expuestas.md.
+
+title = "Aseada — escaneo de secretos"
+
+# Partimos de las ~200 reglas que trae gitleaks (AWS, Stripe, JWT, llaves
+# privadas, tokens de GitHub, etc.) y solo agregamos excepciones encima.
+[extend]
+useDefault = true
+
+# .env.example es la lista canonica de variables y esta en el repositorio a
+# proposito: trae los nombres con el valor vacio, ningun secreto real. Si
+# alguna vez aparece un valor de verdad ahi, es un error y hay que sacarlo,
+# no ampliar esta excepcion.
+[[allowlists]]
+description = "Plantillas de variables de entorno, siempre con valores vacios"
+paths = [
+  '''(^|/)\.env\.example$'''
+]
+
+# Los package-lock.json guardan hashes de integridad (sha512-...) que algunas
+# reglas genericas confunden con secretos. Son publicos y los genera npm.
+[[allowlists]]
+description = "Hashes de integridad de npm"
+paths = [
+  '''(^|/)package-lock\.json$'''
+]

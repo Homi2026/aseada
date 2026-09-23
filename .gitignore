@@ -1,0 +1,20 @@
+# Variables de entorno. Cubre .env, .env.local, .env.production y cualquier
+# otra variante: `vercel env pull` escribe .env.local con secretos de
+# produccion. El 20-05-2026 un .env con las llaves de Flow se subio al
+# repositorio y estuvo cuatro meses publico (ver docs/rotar-credenciales-expuestas.md).
+.env*
+!.env.example
+
+# Dependencias
+node_modules/
+
+# Salidas de build (Expo web exporta a dist/)
+dist/
+web-build/
+.expo/
+
+# Vercel
+.vercel
+
+# macOS
+.DS_Store

@@ -7,6 +7,9 @@
 
 import pg from 'pg';
 import dotenv from 'dotenv';
+// La misma regla TLS que el servidor: este script corre contra produccion con
+// la DATABASE_URL de Neon, asi que no puede ir sin verificar el certificado.
+import { sslPostgres } from '../ssl-postgres.js';
 
 dotenv.config({ path: ['.env.local', '.env'], quiet: true });
 
@@ -21,7 +24,7 @@ if (!url) {
   process.exit(1);
 }
 
-const cliente = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
+const cliente = new pg.Client({ connectionString: url, ssl: sslPostgres() });
 try {
   await cliente.connect();
   const { rows } = await cliente.query(

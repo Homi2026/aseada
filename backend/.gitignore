@@ -6,3 +6,9 @@ node_modules/
 !.env.example
 
 .vercel
+
+# Skills que instala una herramienta local de agentes (unos 6 MB de
+# documentacion de Neon). No son parte del backend ni las necesita el deploy.
+.agents/
+.claude/
+skills-lock.json

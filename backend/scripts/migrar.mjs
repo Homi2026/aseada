@@ -71,9 +71,12 @@ if (process.argv[1] && process.argv[1].endsWith('migrar.mjs')) {
   }
 
   const { default: pg } = await import('pg');
+  // La misma regla TLS que el servidor: este script corre contra produccion,
+  // asi que no puede ser el que viaja sin verificar el certificado.
+  const { sslPostgres } = await import('../ssl-postgres.js');
   const cliente = new pg.Client({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: sslPostgres()
   });
 
   // La cadena puede traer credenciales; mostrar solo el host.

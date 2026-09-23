@@ -2,6 +2,8 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+import { API_URL } from './api';
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -11,7 +13,7 @@ Notifications.setNotificationHandler({
 });
 
 export async function registrarNotificaciones(token: string | null) {
-  if (!token || Platform.OS === 'web' || !Constants.isDevice) return;
+  if (!token || !Constants.isDevice) return;
 
   const current = await Notifications.getPermissionsAsync();
   let status = current.status;
@@ -24,7 +26,9 @@ export async function registrarNotificaciones(token: string | null) {
   if (!projectId) return;
 
   const pushToken = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-  await fetch(`${process.env.EXPO_PUBLIC_API_URL || 'https://aseada-backend-production.up.railway.app'}/api/push-token`, {
+  // Una sola base de API para toda la app: el host de Railway que habia aca
+  // dejo de existir y los tokens push se perdian en silencio.
+  await fetch(`${API_URL}/api/push-token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify({ push_token: pushToken }),

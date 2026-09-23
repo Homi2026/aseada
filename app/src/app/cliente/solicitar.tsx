@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, TextInput } from 'react-native';
 import { router } from 'expo-router';
-import { api } from '../../constants/api';
-import { obtenerSesion } from '../../constants/auth';
+import { api, esSesionVencida } from '../../constants/api';
+import { obtenerSesion, volverAlLogin } from '../../constants/auth';
 import { avisar, confirmar } from '../../constants/dialogos';
 import { GARANTIA, irAPagar } from '../../constants/pagos';
 
@@ -102,6 +102,12 @@ export default function Solicitar() {
       servicioId = res.id;
       await irAPagar(res.id, token);
     } catch (e: any) {
+      // Con el token vencido el servicio no se creo: no hay nada que reintentar
+      // desde el historial, hay que volver a entrar.
+      if (esSesionVencida(e)) {
+        setLoading(false);
+        return volverAlLogin();
+      }
       // Si el servicio se creo pero el cobro fallo, queda pendiente de pago y
       // se puede reintentar desde el historial.
       avisar('No pudimos iniciar el pago', servicioId

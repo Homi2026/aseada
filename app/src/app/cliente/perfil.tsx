@@ -2,13 +2,18 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { avisar } from '../../constants/dialogos';
 import { router } from 'expo-router';
-import { cerrarSesion, obtenerSesion } from '../../constants/auth';
+import { cerrarSesion, obtenerSesion, volverAlLogin } from '../../constants/auth';
 
 export default function PerfilCliente() {
   const [usuario, setUsuario] = useState<any>(null);
 
   useEffect(() => {
-    obtenerSesion().then(({ usuario }) => setUsuario(usuario));
+    obtenerSesion().then(({ token, usuario }) => {
+      // Sin sesion el perfil mostraba "Sin nombre / Sin email" como si la
+      // cuenta estuviera vacia.
+      if (!token) return volverAlLogin();
+      setUsuario(usuario);
+    });
   }, []);
 
   const salir = async () => {

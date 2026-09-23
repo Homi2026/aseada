@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { api } from '../../constants/api';
-import { obtenerSesion } from '../../constants/auth';
+import { api, esSesionVencida } from '../../constants/api';
+import { exigirSesion, volverAlLogin } from '../../constants/auth';
 import { avisar, confirmar } from '../../constants/dialogos';
+import { EstadoError } from '../../components/estado-error';
 import { ESTADOS_CLIENTE, GARANTIA, MOTIVOS_RECLAMO, irAPagar } from '../../constants/pagos';
 
 // Mientras el pago no se libera, el cliente puede reportar un problema.
@@ -14,6 +15,7 @@ export default function HistorialCliente() {
   const { pago } = useLocalSearchParams<{ pago?: string }>();
   const [servicios, setServicios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState('');
   const [ocupado, setOcupado] = useState<number | null>(null);
   const [reclamando, setReclamando] = useState<number | null>(null);
   const [motivo, setMotivo] = useState('');
@@ -21,11 +23,15 @@ export default function HistorialCliente() {
 
   const cargar = useCallback(async () => {
     try {
-      const { token } = await obtenerSesion();
-      const res = await api.get('/api/mis-servicios', token!);
+      const { token } = await exigirSesion();
+      const res = await api.get('/api/mis-servicios', token);
       setServicios(Array.isArray(res) ? res : []);
-    } catch {
-      setServicios([]);
+      setErrorCarga('');
+    } catch (e: any) {
+      // Una sesion vencida no es "todavia no tienes servicios": si se muestran
+      // iguales, la persona cree que perdio sus datos.
+      if (esSesionVencida(e)) return volverAlLogin();
+      setErrorCarga(e?.message || 'Revisa tu conexión e intenta nuevamente.');
     } finally {
       setLoading(false);
     }
@@ -36,9 +42,10 @@ export default function HistorialCliente() {
   const conSesion = async (id: number, accion: (token: string) => Promise<void>) => {
     setOcupado(id);
     try {
-      const { token } = await obtenerSesion();
-      await accion(token!);
+      const { token } = await exigirSesion();
+      await accion(token);
     } catch (e: any) {
+      if (esSesionVencida(e)) return volverAlLogin();
       avisar('No se pudo completar', e?.message || 'Intenta nuevamente.');
     } finally {
       setOcupado(null);
@@ -75,6 +82,16 @@ export default function HistorialCliente() {
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#6C63FF" />
       </View>
+    );
+  }
+
+  if (errorCarga) {
+    return (
+      <EstadoError
+        titulo="No pudimos cargar tu historial"
+        mensaje={errorCarga}
+        onReintentar={() => { setLoading(true); cargar(); }}
+      />
     );
   }
 

@@ -1,33 +1,52 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
-import { api } from '../constants/api';
-import { cerrarSesion, obtenerSesion } from '../constants/auth';
+import { api, esSesionVencida } from '../constants/api';
+import { cerrarSesion, exigirSesion, volverAlLogin } from '../constants/auth';
 import { avisar, confirmar } from '../constants/dialogos';
+import { EstadoError } from '../components/estado-error';
 
 const pesos = (n: any) => '$' + Number(n || 0).toLocaleString('es-CL');
 const fecha = (f: string) => new Date(f).toLocaleString('es-CL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const dia = (f: string) => (f ? new Date(f).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' }) : 'sin fecha');
 const MOTIVOS: Record<string, string> = { no_llego: 'No llegó nadie', incompleto: 'Trabajo incompleto', danio: 'Daño o pérdida', otro: 'Otro' };
 
 export default function Admin() {
   const [transferencias, setTransferencias] = useState<any[]>([]);
   const [reclamos, setReclamos] = useState<any[]>([]);
+  const [workers, setWorkers] = useState<any[]>([]);
   const [referencias, setReferencias] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
+  const [errorCarga, setErrorCarga] = useState('');
+  const [errorWorkers, setErrorWorkers] = useState('');
   const [ocupado, setOcupado] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     try {
-      const { token, usuario } = await obtenerSesion();
+      const { token, usuario } = await exigirSesion();
       if (usuario?.rol !== 'admin') return router.replace('/login');
       const [t, r] = await Promise.all([
-        api.get('/api/admin/transferencias', token!),
-        api.get('/api/admin/reclamos', token!),
+        api.get('/api/admin/transferencias', token),
+        api.get('/api/admin/reclamos', token),
       ]);
-      setTransferencias(t);
-      setReclamos(r);
+      setTransferencias(Array.isArray(t) ? t : []);
+      setReclamos(Array.isArray(r) ? r : []);
+      setErrorCarga('');
+      // El listado de aseadores va aparte a proposito: si esa ruta todavia no
+      // esta desplegada, transferencias y reclamos igual tienen que abrirse.
+      try {
+        const w = await api.get('/api/admin/workers', token);
+        setWorkers(Array.isArray(w) ? w : []);
+        setErrorWorkers('');
+      } catch (error: any) {
+        if (esSesionVencida(error)) return volverAlLogin();
+        setWorkers([]);
+        setErrorWorkers(error?.message || 'No pudimos cargar los aseadores.');
+      }
     } catch (e: any) {
-      avisar('No se pudo cargar', e?.message || 'Intenta nuevamente.');
+      // Una sesion vencida no es "no hay nada que administrar": manda al login.
+      if (esSesionVencida(e)) return volverAlLogin();
+      setErrorCarga(e?.message || 'Intenta nuevamente.');
     } finally {
       setLoading(false);
     }
@@ -38,10 +57,11 @@ export default function Admin() {
   const accion = async (clave: string, fn: (token: string) => Promise<void>) => {
     setOcupado(clave);
     try {
-      const { token } = await obtenerSesion();
-      await fn(token!);
+      const { token } = await exigirSesion();
+      await fn(token);
       await cargar();
     } catch (e: any) {
+      if (esSesionVencida(e)) return volverAlLogin();
       avisar('No se pudo completar', e?.message || 'Intenta nuevamente.');
     } finally {
       setOcupado(null);
@@ -56,6 +76,18 @@ export default function Admin() {
       api.post(`/api/admin/transferencias/${t.id}/transferida`, { referencia: referencias[t.id] || '' }, token));
   };
 
+  const cambiarActivacion = async (w: any) => {
+    const activar = !w.activo;
+    const ok = await confirmar(
+      activar ? '¿Activar a este aseador?' : '¿Desactivar a este aseador?',
+      activar
+        ? `${w.nombre} va a ver la bolsa de trabajos y podrá aceptar servicios.`
+        : `${w.nombre} dejará de ver la bolsa. Los trabajos que ya aceptó siguen a su nombre.`,
+      activar ? 'Activar' : 'Desactivar');
+    if (!ok) return;
+    await accion(`w${w.id}`, (token) => api.post(`/api/admin/workers/${w.id}/activar`, { activo: activar }, token));
+  };
+
   const resolver = async (s: any, tipo: 'liberar' | 'reembolsar') => {
     const ok = await confirmar(tipo === 'liberar' ? '¿Liberar el pago al trabajador?' : '¿Devolver el dinero al cliente?',
       tipo === 'liberar'
@@ -65,7 +97,7 @@ export default function Admin() {
     if (!ok) return;
     await accion(`r${s.id}`, async (token) => {
       const res = await api.post(`/api/admin/servicios/${s.id}/resolver`, { accion: tipo }, token);
-      if (res.pendiente) avisar('Falta un paso', res.pendiente);
+      if (res?.pendiente) avisar('Falta un paso', res.pendiente);
     });
   };
 
@@ -73,9 +105,21 @@ export default function Admin() {
 
   if (loading) return <View style={styles.center}><ActivityIndicator size="large" color="#1f6b4f" /></View>;
 
+  if (errorCarga) {
+    return (
+      <EstadoError
+        titulo="No pudimos cargar la administración"
+        mensaje={errorCarga}
+        color="#1f6b4f"
+        onReintentar={() => { setLoading(true); cargar(); }}
+      />
+    );
+  }
+
   const listas = transferencias.filter((t) => t.estado === 'por_transferir');
   const esperando = transferencias.filter((t) => t.estado === 'esperando_fondos');
   const totalListas = listas.reduce((suma, t) => suma + t.monto_a_transferir, 0);
+  const porActivar = workers.filter((w) => !w.activo);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -83,6 +127,41 @@ export default function Admin() {
         <Text style={styles.title}>Administración</Text>
         <TouchableOpacity onPress={salir}><Text style={styles.salir}>Salir</Text></TouchableOpacity>
       </View>
+
+      <Text style={styles.seccion}>Aseadores por activar · {porActivar.length}</Text>
+      <Text style={styles.ayuda}>
+        Un aseador nuevo entra en revisión y no ve la bolsa de trabajos hasta que lo actives. Revisa que tenga comuna,
+        experiencia y datos de pago antes de darle acceso.
+      </Text>
+      {!!errorWorkers && <Text style={styles.alerta}>⚠️ No pudimos cargar los aseadores: {errorWorkers}</Text>}
+      {!errorWorkers && workers.length === 0 && <Text style={styles.vacio}>Todavía no hay aseadores registrados.</Text>}
+      {workers.map((w) => (
+        <View key={w.id} style={[styles.card, w.activo && styles.cardSuave]}>
+          <View style={styles.filaTitulo}>
+            <Text style={styles.nombre}>{w.nombre}</Text>
+            <Text style={[styles.pill, w.activo ? styles.pillActivo : styles.pillRevision]}>
+              {w.activo ? 'Activo' : 'En revisión'}
+            </Text>
+          </View>
+          <Text style={styles.detalle}>{w.email} · {w.telefono || 'sin teléfono'}</Text>
+          <Text style={styles.detalle}>Comuna: {w.comuna || 'sin indicar'}</Text>
+          <Text style={styles.detalle}>Experiencia: {w.experiencia || 'sin indicar'}</Text>
+          <Text style={styles.detalle}>
+            Datos de pago: {w.perfil_pago_completo ? 'completos' : 'incompletos'} · se registró el {dia(w.creado_en)}
+          </Text>
+          {!w.activo && !w.perfil_pago_completo && (
+            <Text style={styles.alerta}>⚠️ Sin datos bancarios no vamos a poder transferirle cuando cobre.</Text>
+          )}
+          <TouchableOpacity
+            style={[styles.btn, w.activo && styles.btnGris]}
+            onPress={() => cambiarActivacion(w)}
+            disabled={ocupado === `w${w.id}`}>
+            {ocupado === `w${w.id}`
+              ? <ActivityIndicator color="#fff" />
+              : <Text style={styles.btnTexto}>{w.activo ? 'Desactivar' : 'Activar cuenta'}</Text>}
+          </TouchableOpacity>
+        </View>
+      ))}
 
       <Text style={styles.seccion}>Por transferir hoy · {pesos(totalListas)}</Text>
       <Text style={styles.ayuda}>Flow ya depositó este dinero. Transfiere desde Mercado Pago y márcalo aquí: al trabajador le llega el aviso.</Text>
@@ -161,6 +240,10 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#dce3dc' },
   cardSuave: { backgroundColor: '#fbfcfb' },
   cardReclamo: { borderColor: '#f3d0cc' },
+  filaTitulo: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  pill: { fontSize: 12, fontWeight: '800', borderRadius: 20, paddingHorizontal: 10, paddingVertical: 4, overflow: 'hidden' },
+  pillActivo: { backgroundColor: '#eef7f0', color: '#1f6b4f' },
+  pillRevision: { backgroundColor: '#fff4d6', color: '#7c5b00' },
   monto: { fontSize: 24, fontWeight: '900', color: '#1f6b4f' },
   nombre: { fontSize: 15, fontWeight: '700', color: '#17231b', marginTop: 2, marginBottom: 6 },
   banco: { backgroundColor: '#f3f6f3', borderRadius: 8, padding: 10, marginBottom: 8 },
@@ -173,6 +256,7 @@ const styles = StyleSheet.create({
   btn: { backgroundColor: '#1f6b4f', borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 10 },
   btnMitad: { flex: 1 },
   btnRojo: { backgroundColor: '#b91c1c' },
+  btnGris: { backgroundColor: '#8a978e' },
   btnOff: { backgroundColor: '#aab8ae' },
   btnTexto: { color: '#fff', fontWeight: '800', fontSize: 14 },
 });

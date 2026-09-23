@@ -15,12 +15,12 @@ export default function Login() {
     setLoading(true);
     try {
       const res = await api.post('/auth/login', { email, password });
-      if (res.token) {
+      if (res?.token) {
         await guardarSesion(res.token, res.usuario);
         const inicio: Record<string, string> = { worker: '/worker/home', admin: '/admin' };
         router.replace((inicio[res.usuario.rol] || '/cliente/home') as any);
       } else {
-        avisar('No pudimos iniciar sesión', res.error || 'Credenciales incorrectas.');
+        avisar('No pudimos iniciar sesión', res?.error || 'Credenciales incorrectas.');
       }
     } catch (e: any) {
       // api.post lanza con el mensaje del servidor ("Credenciales incorrectas");

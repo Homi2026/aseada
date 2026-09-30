@@ -914,6 +914,36 @@ app.get('/api/cron/diario', async (req, res) => {
   catch(e) { fallo(res, e, 'correr el proceso diario'); }
 });
 
+// El backend es un proceso siempre encendido (Railway), no funciones que se
+// apagan entre pedidos: no hace falta nada externo para despertarlo. Antes
+// esto lo disparaba un servicio de cron aparte, que quedo bloqueado porque el
+// CLI de Railway no expone deploy.cronSchedule fuera del panel.
+//
+// Corre cada INTERVALO_PROCESO_MIN en vez de una vez al dia: liberarVencidos
+// y marcarFondosDisponibles solo tocan lo que de verdad cambio de estado, asi
+// que correr mas seguido no duplica nada, y el trabajador ve su plata
+// disponible mas cerca de las 24 h reales en vez de esperar un horario fijo.
+const INTERVALO_PROCESO_MIN = Number(process.env.INTERVALO_PROCESO_MIN) || 30;
+let procesoPeriodicoCorriendo = false;
+
+async function correrProcesoPeriodico() {
+  // Si la vuelta anterior todavia no termino, se salta esta: superponer dos
+  // corridas no rompe nada porque el trabajo es idempotente, pero no hay
+  // razon para acumular conexiones a la base sin necesidad.
+  if (procesoPeriodicoCorriendo) return;
+  procesoPeriodicoCorriendo = true;
+  try {
+    const r = await procesoDiario();
+    if (r.liberados > 0 || r.disponibles > 0) {
+      console.log(`[aseada] proceso periodico: ${r.liberados} liberado(s), ${r.disponibles} disponible(s) para transferir.`);
+    }
+  } catch (error) {
+    console.error('[aseada] el proceso periodico fallo:', error.message);
+  } finally {
+    procesoPeriodicoCorriendo = false;
+  }
+}
+
 // ─── ADMINISTRACION ──────────────────────────────────────────────────────────
 // La lista de altas de aseadores. Antes cualquiera se registraba como aseador
 // y entraba a la bolsa al instante: nadie revisaba nada y no habia pantalla
@@ -1170,6 +1200,9 @@ module.exports.reiniciarLimiteIntentos = () => intentosPorIp.clear();
 module.exports.INTENTOS_MAX = INTENTOS_MAX;
 // La validacion de entrada se prueba sin levantar el servidor ni tocar la base.
 module.exports.revisarSolicitud = revisarSolicitud;
+// El guard contra corridas superpuestas se prueba llamando dos veces seguido
+// sin esperar la primera. En produccion solo lo llama el setInterval.
+module.exports.correrProcesoPeriodico = correrProcesoPeriodico;
 
 // Solo al ejecutar `node server.js` directamente. Bajo Vercel el archivo se
 // importa como modulo y la plataforma maneja el ciclo de vida del request,
@@ -1179,4 +1212,9 @@ module.exports.revisarSolicitud = revisarSolicitud;
 // `npm run migrate`, que lleva registro de lo aplicado en _migraciones.
 if (require.main === module) {
   app.listen(PORT, '0.0.0.0', () => console.log('Aseada v3.0 PostgreSQL + Flow corriendo en puerto ' + PORT));
+  // Primera corrida a los 30 s (tiempo de sobra para que el pool a Postgres
+  // este listo), despues cada INTERVALO_PROCESO_MIN minutos. unref() para que
+  // el temporizador no le impida al proceso cerrar limpio si hace falta.
+  setTimeout(correrProcesoPeriodico, 30000).unref?.();
+  setInterval(correrProcesoPeriodico, INTERVALO_PROCESO_MIN * 60 * 1000).unref?.();
 }

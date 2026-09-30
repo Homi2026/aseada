@@ -30,9 +30,11 @@ const ESPERA_MAXIMA_MS = 5000;
 /**
  * Los .sql que el repositorio espera tener aplicados, en orden.
  *
- * Devuelve null si no se pueden leer. En Vercel la carpeta migrations/ solo
- * llega al bundle si vercel.json la incluye con includeFiles: si alguien
- * cambia eso, esta funcion falla y el health lo dice en vez de reventar.
+ * Devuelve null si no se pueden leer. En Railway (la plataforma vigente) la
+ * carpeta migrations/ viaja completa con el deploy, sin configuracion aparte:
+ * verificado por ssh contra el contenedor real. En Vercel solo llega al
+ * bundle si vercel.json la incluye con includeFiles: si alguien cambia eso
+ * ahi, esta funcion falla y el health lo dice en vez de reventar.
  */
 function migracionesDelRepo() {
   try {
@@ -69,16 +71,22 @@ async function estado({ db, config = {}, entorno = process.env } = {}) {
   const avisos = [];
 
   // ── 1. Que codigo esta vivo ───────────────────────────────────────────────
-  // Vercel inyecta estas solo en despliegues desde Git. En local no existen y
-  // decirlo es mas util que inventar un "desconocido" silencioso.
-  const sha = entorno.VERCEL_GIT_COMMIT_SHA || null;
+  // Cada plataforma inyecta esto con nombres distintos, solo en despliegues
+  // desde Git. El 24-09-2026 el proyecto vivia en Vercel; hoy vive en Railway
+  // (RAILWAY_GIT_*, no visible en `railway variables`: solo aparece en el
+  // entorno real del contenedor, via `railway ssh -- env`). Se prueban las
+  // dos en ese orden porque Railway es la plataforma vigente; si el dia de
+  // mañana esto corre en otro lado sin ninguna de las dos, el aviso de abajo
+  // dice por que en vez de inventar un "desconocido" silencioso.
+  const sha = entorno.RAILWAY_GIT_COMMIT_SHA || entorno.VERCEL_GIT_COMMIT_SHA || null;
   const commit = {
     sha: sha ? sha.slice(0, 8) : null,
     sha_completo: sha,
-    rama: entorno.VERCEL_GIT_COMMIT_REF || null,
-    ambiente: entorno.VERCEL_ENV || (entorno.VERCEL ? 'vercel' : 'local')
+    rama: entorno.RAILWAY_GIT_BRANCH || entorno.VERCEL_GIT_COMMIT_REF || null,
+    ambiente: entorno.RAILWAY_ENVIRONMENT_NAME || entorno.VERCEL_ENV
+      || (entorno.RAILWAY_ENVIRONMENT ? 'railway' : entorno.VERCEL ? 'vercel' : 'local')
   };
-  if (!sha) avisos.push('No hay SHA de commit: esto no es un despliegue desde Git, o las variables VERCEL_GIT_* no estan disponibles.');
+  if (!sha) avisos.push('No hay SHA de commit: esto no es un despliegue desde Git, o las variables RAILWAY_GIT_*/VERCEL_GIT_* no estan disponibles.');
 
   // ── 2. Si la base contesta ────────────────────────────────────────────────
   const partida = Date.now();

@@ -123,13 +123,58 @@ test('reporta el commit que Vercel inyecta, cortado y completo', async () => {
   assert.equal(cuerpo.commit.ambiente, 'production');
 });
 
-test('sin variables de Vercel lo dice, en vez de inventar un commit', async () => {
+test('sin variables de ninguna plataforma lo dice, en vez de inventar un commit', async () => {
   const db = await baseAlDia();
   const { cuerpo } = await salud.estado({ db, config: CONFIG_SANA, entorno: {} });
 
   assert.equal(cuerpo.commit.sha, null);
   assert.equal(cuerpo.commit.ambiente, 'local');
   assert.ok(cuerpo.avisos.some((a) => /SHA/.test(a)));
+});
+
+// La plataforma vigente: verificado que estas variables existen de verdad en
+// el contenedor (railway ssh -- env), no solo documentadas de memoria.
+test('reporta el commit que Railway inyecta, cortado y completo', async () => {
+  const db = await baseAlDia();
+  const sha = '967cc2f796eab59bd8d5e638f9a5046b4fcf561e';
+  const { cuerpo } = await salud.estado({
+    db,
+    config: CONFIG_SANA,
+    entorno: { RAILWAY_GIT_COMMIT_SHA: sha, RAILWAY_GIT_BRANCH: 'main', RAILWAY_ENVIRONMENT_NAME: 'production', RAILWAY_ENVIRONMENT: 'production' }
+  });
+
+  assert.equal(cuerpo.commit.sha, '967cc2f7');
+  assert.equal(cuerpo.commit.sha_completo, sha);
+  assert.equal(cuerpo.commit.rama, 'main');
+  assert.equal(cuerpo.commit.ambiente, 'production');
+});
+
+// Si algun dia esto corre en Railway sin el SHA (un ambiente sin Git, o una
+// variable que Railway deja de inyectar), que diga "railway" y no "local":
+// la plataforma se sabe igual, aunque el commit exacto no.
+test('en Railway sin SHA, el ambiente sigue siendo railway y no local', async () => {
+  const db = await baseAlDia();
+  const { cuerpo } = await salud.estado({
+    db, config: CONFIG_SANA, entorno: { RAILWAY_ENVIRONMENT: 'production' }
+  });
+
+  assert.equal(cuerpo.commit.sha, null);
+  assert.equal(cuerpo.commit.ambiente, 'railway');
+});
+
+// Si algun dia coexisten ambas plataformas, Railway es la vigente y gana.
+test('con variables de las dos plataformas a la vez, gana Railway', async () => {
+  const db = await baseAlDia();
+  const { cuerpo } = await salud.estado({
+    db, config: CONFIG_SANA,
+    entorno: {
+      RAILWAY_GIT_COMMIT_SHA: 'aaaaaaaaaa', RAILWAY_ENVIRONMENT_NAME: 'production',
+      VERCEL_GIT_COMMIT_SHA: 'bbbbbbbbbb', VERCEL_ENV: 'preview'
+    }
+  });
+
+  assert.equal(cuerpo.commit.sha, 'aaaaaaaa');
+  assert.equal(cuerpo.commit.ambiente, 'production');
 });
 
 // ─── 3. Lo que solo molesta es aviso, no caida ──────────────────────────────

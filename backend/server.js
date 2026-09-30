@@ -10,6 +10,7 @@ const cors = require('cors');
 const crypto = require('crypto');
 const axios = require('axios');
 const pagosTrabajador = require('./pagos-trabajador');
+const salud = require('./salud');
 const { sslPostgres, avisarSiNoVerifica } = require('./ssl-postgres');
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -122,6 +123,17 @@ app.use(cors({
   },
   credentials: true
 }));
+// Lo que /health necesita saber del ambiente. Se arma aca, donde las
+// variables ya estan resueltas, para que el modulo de salud no tenga que
+// volver a leer process.env ni repetir la logica de que cuenta como "bien
+// configurado".
+const CONFIG_PARA_SALUD = {
+  faltaParaFlow: FALTA_PARA_FLOW,
+  corsRestringido: CORS_ORIGINS.length > 0,
+  cronProtegido: Boolean(CRON_SECRET),
+  appUrlDefinida: Boolean(APP_URL)
+};
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -529,7 +541,28 @@ const exigirAseadorActivo = async (req, res, next) => {
 };
 
 // ─── HEALTH ──────────────────────────────────────────────────────────────────
-app.get('/', (req, res) => res.json({ mensaje: 'Aseada API funcionando', version: '3.0.0', db: 'PostgreSQL' }));
+// Esta ruta es la que se mira despues de cada deploy. Devuelve el commit vivo,
+// si Neon contesta, si el esquema esta al dia con este codigo y que quedo sin
+// configurar. Responde 503 cuando la base no contesta o faltan migraciones:
+// un 200 tiene que significar "se puede operar", no "el proceso arranco".
+//
+// Antes aca habia un texto fijo que decia "Aseada API funcionando" pasara lo
+// que pasara. Con eso, verificar un deploy obligaba a entrar a la base de
+// produccion con la contraseña a mano.
+app.get('/health', async (req, res) => {
+  try {
+    const { ok, cuerpo } = await salud.estado({ db: pool, config: CONFIG_PARA_SALUD });
+    res.status(ok ? 200 : 503).json(cuerpo);
+  } catch (error) {
+    // Si el propio chequeo falla, el servicio no esta sano: decirlo, no
+    // devolver 200 por omision.
+    console.error('[aseada] el chequeo de salud fallo:', error.stack || error.message);
+    res.status(503).json({ ok: false, servicio: 'aseada-backend', error: 'No se pudo determinar el estado del servicio.' });
+  }
+});
+
+// La raiz deja de mentir: no dice que todo funciona, dice donde mirar.
+app.get('/', (req, res) => res.json({ servicio: 'aseada-backend', salud: '/health' }));
 
 // ─── CALCULAR PRECIO (público) ───────────────────────────────────────────────
 app.post('/api/calcular-precio', (req, res) => {

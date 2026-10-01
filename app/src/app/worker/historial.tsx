@@ -12,7 +12,9 @@ const fecha = (f: string) => new Date(f).toLocaleString('es-CL', { weekday: 'lon
 function estadoPago(item: any): { texto: string; color: string } | null {
   switch (item.estado) {
     case 'en_proceso':
-      return { texto: 'Cuando termines, márcalo como terminado.', color: '#1d4ed8' };
+      return item.llegada_en
+        ? { texto: 'Cuando termines, márcalo como terminado.', color: '#1d4ed8' }
+        : { texto: 'Marca que llegaste apenas estés en el lugar.', color: '#b45309' };
     case 'completado':
       return { texto: 'Esperando que el cliente confirme. Si no responde, se confirma solo a las 24 horas.', color: '#7c3aed' };
     case 'en_reclamo':
@@ -54,6 +56,21 @@ export default function HistorialWorker() {
   }, []);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  const marcarLlegada = async (id: number) => {
+    setOcupado(id);
+    try {
+      const { token } = await exigirSesion();
+      const res = await api.post(`/api/servicios/${id}/llegue`, {}, token);
+      avisar('¡Listo!', res?.mensaje || 'Marcamos que llegaste.');
+      await cargar();
+    } catch (e: any) {
+      if (esSesionVencida(e)) return volverAlLogin();
+      avisar('No se pudo marcar', e?.message || 'Intenta nuevamente.');
+    } finally {
+      setOcupado(null);
+    }
+  };
 
   const terminar = async (id: number) => {
     const ok = await confirmar('¿Terminaste el trabajo?',
@@ -118,7 +135,13 @@ export default function HistorialWorker() {
                 <Text style={styles.cardPrice}>{item.pago_trabajador_monto ? 'Recibirás' : 'Ganancia bruta'}: {pesos(monto)}</Text>
                 {pago && <Text style={[styles.pago, { color: pago.color }]}>{pago.texto}</Text>}
 
-                {item.estado === 'en_proceso' && (
+                {item.estado === 'en_proceso' && !item.llegada_en && (
+                  <TouchableOpacity style={[styles.btn, styles.btnLlegada]} onPress={() => marcarLlegada(item.id)} disabled={ocupado === item.id}>
+                    {ocupado === item.id ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTexto}>📍 Marcar que llegué</Text>}
+                  </TouchableOpacity>
+                )}
+
+                {item.estado === 'en_proceso' && item.llegada_en && (
                   <TouchableOpacity style={styles.btn} onPress={() => terminar(item.id)} disabled={ocupado === item.id}>
                     {ocupado === item.id ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTexto}>✅ Marcar como terminado</Text>}
                   </TouchableOpacity>
@@ -142,6 +165,7 @@ const styles = StyleSheet.create({
   cardPrice: { marginTop: 8, fontSize: 18, fontWeight: 'bold', color: '#6C63FF' },
   pago: { marginTop: 8, fontSize: 13, lineHeight: 19, fontWeight: '600' },
   btn: { backgroundColor: '#1f6b4f', borderRadius: 10, padding: 13, alignItems: 'center', marginTop: 12 },
+  btnLlegada: { backgroundColor: '#b45309' },
   btnTexto: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyIcon: { fontSize: 54, marginBottom: 12 },

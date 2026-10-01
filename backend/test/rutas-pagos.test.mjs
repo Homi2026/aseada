@@ -61,6 +61,14 @@ test('confirmar y reclamar son solo del cliente', async () => {
   });
 });
 
+test('marcar la llegada es solo del aseador', async () => {
+  await conServidor(async (base) => {
+    assert.equal((await pedir(base, 'POST', '/api/servicios/1/llegue')).status, 401, 'sin sesion');
+    assert.equal((await pedir(base, 'POST', '/api/servicios/1/llegue', 'cliente')).status, 403,
+      'un cliente no puede marcar que un aseador llego');
+  });
+});
+
 // El rol admin existe en la base, pero nadie puede pedirlo al registrarse:
 // si se pudiera, cualquiera se asignaria las transferencias a trabajadores.
 test('el registro publico no permite crear administradores', async () => {

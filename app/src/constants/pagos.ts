@@ -15,16 +15,28 @@ export async function irAPagar(servicioId: number, token: string) {
   }
 }
 
-/** Lo que el cliente ve de cada estado del servicio. */
-export const ESTADOS_CLIENTE: Record<string, { texto: string; color: string }> = {
+/** Los estados que no dependen de si el aseador ya marco su llegada. */
+const ESTADOS_CLIENTE_FIJOS: Record<string, { texto: string; color: string }> = {
   pendiente_pago: { texto: 'Falta pagar', color: '#b45309' },
   buscando_worker: { texto: 'Pago retenido · buscando trabajador', color: '#1d4ed8' },
-  en_proceso: { texto: 'Trabajador asignado', color: '#1d4ed8' },
   completado: { texto: 'Terminado · confirma si quedó bien', color: '#7c3aed' },
   en_reclamo: { texto: 'Reclamo en revisión · pago retenido', color: '#b91c1c' },
   pagado: { texto: 'Confirmado', color: '#15803d' },
   reembolsado: { texto: 'Dinero devuelto', color: '#475569' },
 };
+
+/**
+ * Lo que el cliente ve del estado de su servicio. 'en_proceso' se distingue
+ * segun si el aseador ya marco su llegada o si todavia va en camino.
+ */
+export function estadoCliente(servicio: { estado: string; llegada_en?: string | null }): { texto: string; color: string } {
+  if (servicio.estado === 'en_proceso') {
+    return servicio.llegada_en
+      ? { texto: 'El aseador llegó', color: '#1d4ed8' }
+      : { texto: 'Aseador asignado · en camino', color: '#1d4ed8' };
+  }
+  return ESTADOS_CLIENTE_FIJOS[servicio.estado] || { texto: servicio.estado, color: '#666' };
+}
 
 export const MOTIVOS_RECLAMO = [
   { id: 'no_llego', texto: 'No llegó nadie' },

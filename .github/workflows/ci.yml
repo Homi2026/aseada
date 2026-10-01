@@ -1,0 +1,72 @@
+name: CI
+
+# Lint, pruebas y escaneo de secretos en cada push y cada PR, sin que alguien
+# tenga que acordarse de correrlos a mano. Mati lo dejo pendiente: el token
+# con el que subio sus commits de septiembre no tenia el scope 'workflow',
+# que GitHub exige para subir o modificar archivos bajo .github/workflows/.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend · pruebas
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  app:
+    name: App · tipos
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      # El monorepo trae dependencias de React Native con peer deps cruzadas
+      # (mismo motivo por el que Vercel usaba --legacy-peer-deps en su
+      # installCommand).
+      - run: npm install --legacy-peer-deps
+      - run: npx tsc --noEmit
+
+  secretos:
+    name: Secretos en el historial
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # El escaneo recorre todo el historial, no solo el commit actual:
+          # es ahi donde vive el .env filtrado del commit 2c36c14.
+          fetch-depth: 0
+      - name: Instalar gitleaks
+        run: |
+          curl -sSL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          tar xzf gitleaks.tar.gz gitleaks
+      # El .env del commit 2c36c14 (mayo de 2026) sigue en el historial: el
+      # runbook de docs/rotar-credenciales-expuestas.md explica por que
+      # limpiarlo es un force-push que hay que coordinar con quien tenga el
+      # repo clonado, y que las credenciales ya rotadas importan mas que la
+      # limpieza. Hasta que eso pase, un hallazgo aca es esperado, no una
+      # sorpresa: continue-on-error evita que ese hallazgo conocido bloquee
+      # cada PR. Sacar esta linea en cuanto `gitleaks git .
+      # --config gitleaks.toml` de "no leaks found" (paso 4 del runbook).
+      - name: Escanear el historial
+        continue-on-error: true
+        run: ./gitleaks git . --config gitleaks.toml --redact --no-banner

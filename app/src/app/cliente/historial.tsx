@@ -5,7 +5,7 @@ import { api, esSesionVencida } from '../../constants/api';
 import { exigirSesion, volverAlLogin } from '../../constants/auth';
 import { avisar, confirmar } from '../../constants/dialogos';
 import { EstadoError } from '../../components/estado-error';
-import { ESTADOS_CLIENTE, GARANTIA, MOTIVOS_RECLAMO, irAPagar } from '../../constants/pagos';
+import { estadoCliente, GARANTIA, MOTIVOS_RECLAMO, irAPagar } from '../../constants/pagos';
 
 // Mientras el pago no se libera, el cliente puede reportar un problema.
 const RECLAMABLES = ['buscando_worker', 'en_proceso', 'completado'];
@@ -123,7 +123,7 @@ export default function HistorialCliente() {
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={styles.list}
           renderItem={({ item }) => {
-            const estado = ESTADOS_CLIENTE[item.estado] || { texto: item.estado, color: '#666' };
+            const estado = estadoCliente(item);
             const cargando = ocupado === item.id;
             return (
               <View style={styles.card}>

@@ -20,6 +20,15 @@ const ESTADOS_RECLAMABLES = ['buscando_worker', 'en_proceso', 'completado'];
 
 const HORA_MS = 60 * 60 * 1000;
 
+// Si el aseador no marca que llego dentro de esta ventana desde que acepto,
+// el sistema levanta el reclamo solo: nadie tiene que darse cuenta ni
+// reportarlo a mano. No es un reembolso automatico -- el pago del cliente
+// queda retenido, pero la decision de pagarle al trabajador o devolver la
+// sigue tomando un administrador, igual que cualquier otro reclamo. Un
+// aseador que si llego pero se olvido de tocar el boton no deberia perder su
+// pago sin que nadie lo revise primero.
+const HORAS_TOLERANCIA_LLEGADA = 2;
+
 /**
  * Corre `fn` dentro de una transaccion y devuelve lo que ella devuelva. Si
  * algo revienta a mitad, no queda nada escrito a medias.
@@ -179,6 +188,52 @@ async function reclamar(db, servicioId, clienteId, { motivo, detalle = '', ahora
 }
 
 /**
+ * El aseador marca que llego a la direccion. Solo el asignado, solo mientras
+ * el servicio sigue en_proceso, y una sola vez.
+ */
+async function marcarLlegada(db, servicioId, workerId, { ahora = new Date() } = {}) {
+  const { rows: [actual] } = await db.query('SELECT worker_id, estado, llegada_en FROM servicios WHERE id=$1', [servicioId]);
+  if (!actual) return { error: 'Servicio no encontrado', status: 404 };
+  if (actual.worker_id !== workerId) return { error: 'Solo el aseador asignado puede marcar que llegó', status: 403 };
+  if (actual.estado !== 'en_proceso') return { error: 'Este servicio no está en proceso', status: 400 };
+  if (actual.llegada_en) return { error: 'Ya habías marcado que llegaste', status: 409 };
+  // La condicion se repite al escribir por la misma razon que en reclamar():
+  // entre el SELECT y el UPDATE el proceso periodico pudo haber levantado el
+  // reclamo automatico por demora, y esta carrera no debe pisarlo.
+  const { rows: [servicio] } = await db.query(
+    `UPDATE servicios SET llegada_en=$2
+     WHERE id=$1 AND worker_id=$3 AND estado='en_proceso' AND llegada_en IS NULL RETURNING *`,
+    [servicioId, ahora, workerId]);
+  if (!servicio) return { error: 'No se pudo marcar la llegada', status: 409 };
+  return { servicio };
+}
+
+/**
+ * Levanta el reclamo solo cuando el aseador no marco su llegada a tiempo.
+ * Misma forma que liberarVencidos(): recorre los vencidos y actua uno por
+ * uno, para que un servicio con datos raros no le impida avanzar a los demas.
+ */
+async function marcarNoLlegadas(db, { ahora = new Date(), horasTolerancia = HORAS_TOLERANCIA_LLEGADA } = {}) {
+  const limite = new Date(ahora.getTime() - horasTolerancia * HORA_MS);
+  const { rows } = await db.query(
+    `SELECT id FROM servicios
+     WHERE estado='en_proceso' AND llegada_en IS NULL AND aceptado_en IS NOT NULL AND aceptado_en <= $1
+     ORDER BY id`, [limite]);
+  const reclamados = [];
+  for (const { id } of rows) {
+    // La condicion se repite al escribir: entre el SELECT y este UPDATE el
+    // aseador pudo haber marcado su llegada recien, y esta carrera no debe
+    // levantarle un reclamo a un servicio que ya esta al dia.
+    const { rows: [servicio] } = await db.query(
+      `UPDATE servicios SET estado='en_reclamo', reclamo_en=$2, reclamo_motivo='no_llego', reclamo_detalle=$3
+       WHERE id=$1 AND estado='en_proceso' AND llegada_en IS NULL RETURNING *`,
+      [id, ahora, `Generado automáticamente: el aseador no marcó su llegada dentro de ${horasTolerancia} horas desde que aceptó.`]);
+    if (servicio) reclamados.push(servicio);
+  }
+  return reclamados;
+}
+
+/**
  * Un administrador cierra un reclamo. 'reembolsar' deja registrado el
  * reembolso; la devolucion en si se hace desde el panel de Flow.
  *
@@ -237,8 +292,9 @@ async function listarPendientes(db) {
 }
 
 module.exports = {
-  HORAS_REVISION, MOTIVOS_RECLAMO,
+  HORAS_REVISION, MOTIVOS_RECLAMO, HORAS_TOLERANCIA_LLEGADA,
   enTransaccion, tasaRetencion, calcularLiquidacion, registrarDatosFlow,
   liberarServicio, liberarVencidos, marcarFondosDisponibles,
-  reclamar, resolverReclamo, marcarTransferida, listarPendientes
+  reclamar, resolverReclamo, marcarTransferida, listarPendientes,
+  marcarLlegada, marcarNoLlegadas
 };

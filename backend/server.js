@@ -440,6 +440,21 @@ async function avisarPagoLiberado({ servicio, transferencia }) {
     { servicio_id: servicio.id });
 }
 
+// El reclamo que levanto marcarNoLlegadas(), no una persona: por eso avisa a
+// las tres partes de una vez, en vez de esperar a que el cliente lo note.
+async function avisarNoLlegada(servicio) {
+  await notificar(servicio.cliente_id, 'reclamo', 'Parece que nadie llegó',
+    `El aseador del servicio #${servicio.id} no marcó su llegada a tiempo. Tu pago queda retenido mientras lo revisamos.`,
+    { servicio_id: servicio.id });
+  if (servicio.worker_id) {
+    await notificar(servicio.worker_id, 'reclamo', 'No marcaste que llegaste',
+      `El servicio #${servicio.id} quedó en revisión porque no marcaste tu llegada a tiempo. Si llegaste de verdad, contáctanos.`,
+      { servicio_id: servicio.id });
+  }
+  await notificar(await idsAdmins(), 'reclamo', `Reclamo automático en el servicio #${servicio.id}`,
+    'El aseador no marcó su llegada dentro de la ventana esperada.', { servicio_id: servicio.id });
+}
+
 // ─── FLOW HELPERS ────────────────────────────────────────────────────────────
 function flowSign(params) {
   const keys = Object.keys(params).sort();
@@ -903,7 +918,9 @@ async function procesoDiario() {
     await notificar(await idsAdmins(), 'transferencias_pendientes', 'Hay pagos listos para transferir',
       `${disponibles.length} pago(s) a trabajadores por ${pesos(total)}: Flow ya depositó ese dinero.`);
   }
-  return { liberados: liberados.length, disponibles: disponibles.length };
+  const noLlegaron = await pagosTrabajador.marcarNoLlegadas(pool);
+  for (const servicio of noLlegaron) await avisarNoLlegada(servicio);
+  return { liberados: liberados.length, disponibles: disponibles.length, no_llegaron: noLlegaron.length };
 }
 
 app.get('/api/cron/diario', async (req, res) => {
@@ -1152,13 +1169,29 @@ app.post('/api/worker/aceptar/:id', verificarToken, exigirRol('worker'), exigirA
     // esa condicion, dos aseadores que vieron el mismo trabajo lo escriben
     // los dos, ambos reciben "Trabajo aceptado" y gana el ultimo. Con ella,
     // el segundo no alcanza ninguna fila y se entera de que ya no esta.
+    // aceptado_en es el ancla de la ventana de llegada (ver marcarNoLlegadas
+    // en pagos-trabajador.js): fecha_servicio es solo el dia preferido que
+    // escribio el cliente, a veces vacio, no una hora de cita real.
     const { rows: [asignado] } = await pool.query(
-      "UPDATE servicios SET estado='en_proceso', worker_id=$1 WHERE id=$2 AND estado='buscando_worker' RETURNING id",
+      "UPDATE servicios SET estado='en_proceso', worker_id=$1, aceptado_en=NOW() WHERE id=$2 AND estado='buscando_worker' RETURNING id",
       [req.usuario.id, req.params.id]
     );
     if (!asignado) return res.status(400).json({ error: 'Este trabajo ya lo tomó otro aseador' });
     res.json({ mensaje: 'Trabajo aceptado' });
   } catch(e) { fallo(res, e, 'aceptar el trabajo'); }
+});
+
+// El aseador marca que llego a la direccion. Le da al cliente una senal real
+// de que alguien se presento, y es lo que marcarNoLlegadas() mira para saber
+// si hace falta levantar un reclamo solo.
+app.post('/api/servicios/:id/llegue', verificarToken, exigirRol('worker'), async (req, res) => {
+  try {
+    const r = await pagosTrabajador.marcarLlegada(pool, Number(req.params.id), req.usuario.id);
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    await notificar(r.servicio.cliente_id, 'aseador_llego', 'Tu aseador llegó',
+      `El aseador llegó al servicio #${r.servicio.id}.`, { servicio_id: r.servicio.id });
+    res.json({ mensaje: 'Listo, marcamos que llegaste.', servicio: r.servicio });
+  } catch(e) { fallo(res, e, 'marcar la llegada'); }
 });
 
 // Ruta no encontrada: responder JSON, no el HTML por defecto de Express, para

@@ -233,6 +233,45 @@ async function marcarNoLlegadas(db, { ahora = new Date(), horasTolerancia = HORA
   return reclamados;
 }
 
+const CUANDO_REAGENDAR = ['hoy', 'manana'];
+
+/**
+ * El cliente reagenda un servicio que quedo en_reclamo por 'no_llego': vuelve
+ * a la bolsa de trabajos para que lo tome otro aseador, excluyendo al que no
+ * llego (no puede volver a tomar este mismo servicio). El pago sigue
+ * retenido exactamente igual que antes: reagendar no lo toca.
+ *
+ * Solo sirve para 'no_llego' porque ahi el sistema ya verifico objetivamente
+ * que nadie marco su llegada; otros motivos de reclamo (incompleto, danio,
+ * otro) son disputas que un admin tiene que revisar, no algo que el cliente
+ * resuelva solo reagendando.
+ */
+async function reagendarPorNoLlegada(db, servicioId, clienteId, { cuando, ahora = new Date() } = {}) {
+  if (!CUANDO_REAGENDAR.includes(cuando)) return { error: "'cuando' debe ser 'hoy' o 'manana'", status: 400 };
+  const { rows: [actual] } = await db.query('SELECT cliente_id, estado, reclamo_motivo FROM servicios WHERE id=$1', [servicioId]);
+  if (!actual) return { error: 'Servicio no encontrado', status: 404 };
+  if (actual.cliente_id !== clienteId) return { error: 'Solo el cliente del servicio puede reagendarlo', status: 403 };
+  if (actual.estado !== 'en_reclamo' || actual.reclamo_motivo !== 'no_llego') {
+    return { error: 'Este servicio no está esperando una decisión por falta de aseador', status: 400 };
+  }
+  const fecha = new Date(ahora.getTime() + (cuando === 'manana' ? HORA_MS * 24 : 0));
+  // array_append(workers_excluidos, worker_id) lee el worker_id de ANTES de
+  // este mismo UPDATE: no hace falta guardarlo aparte ni arriesgar una
+  // carrera entre el SELECT de arriba y este escritura.
+  const { rows: [servicio] } = await db.query(
+    `UPDATE servicios SET
+       estado='buscando_worker',
+       workers_excluidos = CASE WHEN worker_id IS NULL THEN workers_excluidos ELSE array_append(workers_excluidos, worker_id) END,
+       worker_id=NULL, aceptado_en=NULL, llegada_en=NULL,
+       fecha_servicio=$2,
+       reclamo_en=NULL, reclamo_motivo=NULL, reclamo_detalle=NULL
+     WHERE id=$1 AND estado='en_reclamo' AND reclamo_motivo='no_llego'
+     RETURNING *`,
+    [servicioId, fecha]);
+  if (!servicio) return { error: 'No se pudo reagendar', status: 409 };
+  return { servicio };
+}
+
 /**
  * Un administrador cierra un reclamo. 'reembolsar' deja registrado el
  * reembolso; la devolucion en si se hace desde el panel de Flow.
@@ -296,5 +335,5 @@ module.exports = {
   enTransaccion, tasaRetencion, calcularLiquidacion, registrarDatosFlow,
   liberarServicio, liberarVencidos, marcarFondosDisponibles,
   reclamar, resolverReclamo, marcarTransferida, listarPendientes,
-  marcarLlegada, marcarNoLlegadas
+  marcarLlegada, marcarNoLlegadas, reagendarPorNoLlegada
 };

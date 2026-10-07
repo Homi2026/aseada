@@ -444,7 +444,7 @@ async function avisarPagoLiberado({ servicio, transferencia }) {
 // las tres partes de una vez, en vez de esperar a que el cliente lo note.
 async function avisarNoLlegada(servicio) {
   await notificar(servicio.cliente_id, 'reclamo', 'Parece que nadie llegó',
-    `El aseador del servicio #${servicio.id} no marcó su llegada a tiempo. Tu pago queda retenido mientras lo revisamos.`,
+    `El aseador del servicio #${servicio.id} no marcó su llegada a tiempo. Tu pago sigue retenido. Desde tu historial puedes reagendarlo con otro aseador para hoy o mañana, o pedir que te devolvamos el dinero.`,
     { servicio_id: servicio.id });
   if (servicio.worker_id) {
     await notificar(servicio.worker_id, 'reclamo', 'No marcaste que llegaste',
@@ -768,6 +768,69 @@ app.post('/api/servicios/:id/reclamo', verificarToken, exigirRol('cliente'), asy
   } catch(e) { fallo(res, e, 'registrar el reclamo'); }
 });
 
+// El cliente elige reagendar en vez de pedir el reembolso cuando nadie llego:
+// vuelve a la bolsa de trabajos para otro aseador, excluyendo al que no vino.
+app.post('/api/servicios/:id/reagendar', verificarToken, exigirRol('cliente'), async (req, res) => {
+  try {
+    const r = await pagosTrabajador.reagendarPorNoLlegada(pool, Number(req.params.id), req.usuario.id,
+      { cuando: req.body?.cuando });
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    res.json({ mensaje: 'Listo, buscamos otro aseador para tu servicio.', servicio: r.servicio });
+  } catch(e) { fallo(res, e, 'reagendar el servicio'); }
+});
+
+// El cliente pide el reembolso cuando nadie llego: a diferencia de un
+// reclamo por 'incompleto' o 'danio', aca no hace falta que un admin lo
+// revise primero porque el sistema ya verifico objetivamente que nadie
+// marco su llegada. El reembolso se inicia solo contra la API de Flow.
+app.post('/api/servicios/:id/pedir-reembolso', verificarToken, exigirRol('cliente'), exigirFlow, async (req, res) => {
+  try {
+    const { rows: [s] } = await pool.query(
+      'SELECT cliente_id, estado, reclamo_motivo FROM servicios WHERE id=$1', [req.params.id]);
+    if (!s) return res.status(404).json({ error: 'Servicio no encontrado' });
+    if (s.cliente_id !== req.usuario.id) return res.status(403).json({ error: 'Solo el cliente del servicio puede pedir el reembolso' });
+    if (s.estado !== 'en_reclamo' || s.reclamo_motivo !== 'no_llego') {
+      return res.status(400).json({ error: 'Este servicio no está esperando una decisión por falta de aseador' });
+    }
+    const r = await pagosTrabajador.enTransaccion(pool, (db) =>
+      pagosTrabajador.resolverReclamo(db, Number(req.params.id), 'reembolsar', { aseadaRetiene: ASEADA_RETIENE_HONORARIOS }));
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    const { servicio, pago } = r.resultado;
+
+    const refundOrder = `ASEADA-REEMBOLSO-${servicio.id}-${Date.now()}`;
+    let refundData;
+    try {
+      refundData = await flowPost('/refund/create', {
+        refundCommerceOrder: refundOrder,
+        receiverEmail: req.usuario.email,
+        amount: pago.monto_total,
+        urlCallBack: `${PUBLIC_URL}/pagos/flow/reembolso-confirmacion`,
+        commerceTrxId: pago.flow_order || ''
+      });
+    } catch (error) {
+      // La plata ya quedo marcada 'reembolsada' de nuestro lado (resolverReclamo
+      // ya corrio en su propia transaccion y quedo comprometida); si Flow
+      // rechaza la orden de devolucion, un admin la reintenta a mano en vez de
+      // dejar al cliente sin ninguna de las dos cosas.
+      console.error(`[aseada] refund/create fallo para el servicio #${servicio.id}:`, error.message);
+      await notificar(await idsAdmins(), 'reembolso', `Reembolso automático falló en Flow: servicio #${servicio.id}`,
+        `Inicia la devolución a mano en el panel de Flow por ${pesos(pago.monto_total)}. Error: ${error.message}`,
+        { servicio_id: servicio.id });
+      return res.json({
+        mensaje: 'Aprobamos tu reembolso, pero tuvimos un problema iniciándolo con Flow. Un administrador lo revisará.',
+        servicio
+      });
+    }
+    await pool.query(
+      'UPDATE pagos SET flow_refund_token=$1, flow_refund_order=$2 WHERE id=$3',
+      [refundData.token, refundOrder, pago.id]);
+    await notificar(servicio.cliente_id, 'reembolso', 'Iniciamos tu devolución',
+      `Te devolvemos ${pesos(pago.monto_total)} en máximo 72 horas. Flow te enviará un correo para confirmar la devolución; revisa también tu carpeta de spam.`,
+      { servicio_id: servicio.id });
+    res.json({ mensaje: 'Iniciamos tu reembolso. Te devolvemos el dinero en máximo 72 horas. Flow te va a enviar un correo para confirmarlo.', servicio });
+  } catch(e) { fallo(res, e, 'pedir el reembolso'); }
+});
+
 // ─── FLOW PAGOS ───────────────────────────────────────────────────────────────
 app.post('/api/pagos/crear', exigirFlow, verificarToken, async (req, res) => {
   try {
@@ -871,6 +934,21 @@ app.post('/pagos/flow/confirmacion', exigirFlow, async (req, res) => {
       await pool.query("UPDATE pagos SET estado='rechazado' WHERE flow_token=$1", [token]);
     }
     // Siempre 200: si se responde error, Flow reintenta el aviso para siempre.
+    res.json({ ok: true });
+  } catch(e) { responderErrorFlow(res, e); }
+});
+
+// Flow avisa aca cuando el cliente acepta o rechaza la devolucion que se
+// inicio en /api/servicios/:id/pedir-reembolso. Solo deja registrado el
+// estado que informa Flow: el servicio y el pago ya quedaron 'reembolsado'
+// desde que se inicio, no cuando el cliente confirma.
+app.post('/pagos/flow/reembolso-confirmacion', exigirFlow, async (req, res) => {
+  try {
+    const { token } = req.body;
+    const refundData = await flowGet('/refund/getStatus', { token });
+    await pool.query(
+      'UPDATE pagos SET flow_refund_status=$2, flow_refund_status_en=NOW() WHERE flow_refund_token=$1',
+      [token, refundData.status]);
     res.json({ ok: true });
   } catch(e) { responderErrorFlow(res, e); }
 });
@@ -1145,8 +1223,12 @@ app.get('/api/fotos_servicio', verificarToken, async (req, res) => {
 // ─── WORKER RUTAS ────────────────────────────────────────────────────────────
 app.get('/api/worker/disponibles', verificarToken, exigirRol('worker'), exigirAseadorActivo, async (req, res) => {
   try {
+    // NOT ($1 = ANY(workers_excluidos)): el aseador que no llego a un
+    // servicio y el cliente lo reagendo no puede volver a tomar ese mismo
+    // servicio, aunque siga viendo el resto de la bolsa normal.
     const r = await pool.query(
-      "SELECT * FROM servicios WHERE estado='buscando_worker' ORDER BY id DESC"
+      "SELECT * FROM servicios WHERE estado='buscando_worker' AND NOT ($1 = ANY(workers_excluidos)) ORDER BY id DESC",
+      [req.usuario.id]
     );
     // Ninguno de estos tiene aseador todavia, asi que todos salen sin
     // direccion: el aseador la recibe cuando el trabajo ya es suyo.
@@ -1163,6 +1245,7 @@ app.post('/api/worker/aceptar/:id', verificarToken, exigirRol('worker'), exigirA
     const s = rows[0];
     if (!s) return res.status(404).json({ error: 'Servicio no encontrado' });
     if (s.estado !== 'buscando_worker') return res.status(400).json({ error: 'Servicio no disponible' });
+    if (s.workers_excluidos?.includes(req.usuario.id)) return res.status(400).json({ error: 'No puedes tomar este servicio' });
 
     // La condicion del SELECT se repite al escribir. Entre uno y otro pasan
     // milisegundos, y los aseadores consultan la bolsa cada 5 segundos: sin
@@ -1171,9 +1254,11 @@ app.post('/api/worker/aceptar/:id', verificarToken, exigirRol('worker'), exigirA
     // el segundo no alcanza ninguna fila y se entera de que ya no esta.
     // aceptado_en es el ancla de la ventana de llegada (ver marcarNoLlegadas
     // en pagos-trabajador.js): fecha_servicio es solo el dia preferido que
-    // escribio el cliente, a veces vacio, no una hora de cita real.
+    // escribio el cliente, a veces vacio, no una hora de cita real. Repetir
+    // tambien la exclusion evita que, entre el SELECT y aca, un reagendamiento
+    // justo lo haya agregado a workers_excluidos.
     const { rows: [asignado] } = await pool.query(
-      "UPDATE servicios SET estado='en_proceso', worker_id=$1, aceptado_en=NOW() WHERE id=$2 AND estado='buscando_worker' RETURNING id",
+      "UPDATE servicios SET estado='en_proceso', worker_id=$1, aceptado_en=NOW() WHERE id=$2 AND estado='buscando_worker' AND NOT ($1 = ANY(workers_excluidos)) RETURNING id",
       [req.usuario.id, req.params.id]
     );
     if (!asignado) return res.status(400).json({ error: 'Este trabajo ya lo tomó otro aseador' });

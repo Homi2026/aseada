@@ -77,6 +77,24 @@ export default function HistorialCliente() {
     });
   };
 
+  const reagendar = (id: number, cuando: 'hoy' | 'manana') => conSesion(id, async (token) => {
+    const res = await api.post(`/api/servicios/${id}/reagendar`, { cuando }, token);
+    avisar('¡Listo!', res.mensaje);
+    await cargar();
+  });
+
+  const pedirReembolso = async (id: number) => {
+    const ok = await confirmar('¿Prefieres el reembolso?',
+      'También podemos reagendarlo con otro aseador para que igual se haga. Si prefieres el reembolso, te devolvemos el dinero en máximo 72 horas. Flow te va a pedir que lo confirmes por correo.',
+      'Sí, quiero el reembolso');
+    if (!ok) return;
+    await conSesion(id, async (token) => {
+      const res = await api.post(`/api/servicios/${id}/pedir-reembolso`, {}, token);
+      avisar('Listo', res.mensaje);
+      await cargar();
+    });
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -149,7 +167,22 @@ export default function HistorialCliente() {
                   </>
                 )}
 
-                {item.estado === 'en_reclamo' && (
+                {item.estado === 'en_reclamo' && item.reclamo_motivo === 'no_llego' && (
+                  <View style={styles.reagendo}>
+                    <Text style={styles.nota}>El aseador no llegó. Tu pago sigue retenido. ¿Qué prefieres?</Text>
+                    <TouchableOpacity style={styles.btnPrincipal} onPress={() => reagendar(item.id, 'hoy')} disabled={cargando}>
+                      {cargando ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTexto}>Reagendar para hoy</Text>}
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.btnPrincipal, styles.btnManana]} onPress={() => reagendar(item.id, 'manana')} disabled={cargando}>
+                      {cargando ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTexto}>Reagendar para mañana</Text>}
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.btnSecundario} onPress={() => pedirReembolso(item.id)} disabled={cargando}>
+                      <Text style={styles.btnSecundarioTexto}>Prefiero el reembolso</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {item.estado === 'en_reclamo' && item.reclamo_motivo !== 'no_llego' && (
                   <Text style={styles.nota}>Estamos revisando tu reclamo. Tu pago sigue retenido y no se le libera al trabajador hasta resolverlo.</Text>
                 )}
 
@@ -201,6 +234,8 @@ const styles = StyleSheet.create({
   cardPrice: { marginTop: 8, fontSize: 18, fontWeight: 'bold', color: '#6C63FF' },
   nota: { fontSize: 13, color: '#555', lineHeight: 19, marginTop: 10 },
   btnPrincipal: { backgroundColor: '#6C63FF', borderRadius: 10, padding: 13, alignItems: 'center', marginTop: 12 },
+  reagendo: { marginTop: 4 },
+  btnManana: { marginTop: 8 },
   btnTexto: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
   btnSecundario: { borderRadius: 10, padding: 11, alignItems: 'center', marginTop: 8, borderWidth: 1, borderColor: '#e5c9c5' },
   btnSecundarioTexto: { color: '#b91c1c', fontSize: 14, fontWeight: '600' },

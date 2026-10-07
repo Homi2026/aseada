@@ -61,6 +61,16 @@ test('confirmar y reclamar son solo del cliente', async () => {
   });
 });
 
+test('reagendar y pedir el reembolso son solo del cliente', async () => {
+  await conServidor(async (base) => {
+    for (const ruta of ['/api/servicios/1/reagendar', '/api/servicios/1/pedir-reembolso']) {
+      assert.equal((await pedir(base, 'POST', ruta)).status, 401, `${ruta} sin sesion`);
+      assert.equal((await pedir(base, 'POST', ruta, 'worker')).status, 403,
+        `${ruta}: un trabajador no puede reagendar ni pedir el reembolso de un servicio ajeno`);
+    }
+  });
+});
+
 test('marcar la llegada es solo del aseador', async () => {
   await conServidor(async (base) => {
     assert.equal((await pedir(base, 'POST', '/api/servicios/1/llegue')).status, 401, 'sin sesion');

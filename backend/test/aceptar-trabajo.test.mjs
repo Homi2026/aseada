@@ -108,6 +108,28 @@ test('quien llega cuando el trabajo ya se tomo recibe 400, no lo reasigna', asyn
   });
 });
 
+const disponibles = (base, workerId) => fetch(`${base}/api/worker/disponibles`, {
+  headers: { Authorization: `Bearer ${jwt.sign({ id: workerId, email: `w${workerId}@t.cl`, rol: 'worker' }, process.env.JWT_SECRET)}` }
+});
+
+// El aseador que no llego a un servicio y el cliente lo reagendo queda
+// excluido de volver a tomar ese mismo servicio (ver reagendar-no-llegada.test.mjs).
+test('un aseador excluido de un servicio no lo ve en la bolsa ni lo puede aceptar', async () => {
+  const e = await escenario();
+  await e.db.query('UPDATE servicios SET workers_excluidos=$2 WHERE id=$1', [e.servicio, [e.w1]]);
+  usarPool(e.db);
+
+  await conServidor(async (base) => {
+    const lista = await (await disponibles(base, e.w1)).json();
+    assert.equal(lista.find((s) => s.id === e.servicio), undefined, 'el excluido no ve el servicio en la bolsa');
+
+    const rechazado = await aceptar(base, e.servicio, e.w1);
+    assert.equal(rechazado.status, 400);
+
+    assert.equal((await aceptar(base, e.servicio, e.w2)).status, 200, 'otro aseador si puede tomarlo');
+  });
+});
+
 // El token sigue siendo valido hasta que expira, asi que desactivar una
 // cuenta no basta si la ruta no lo mira.
 test('un aseador desactivado no toma trabajos nuevos', async () => {

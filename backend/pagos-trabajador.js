@@ -331,23 +331,33 @@ async function listarPendientes(db) {
 }
 
 const VISITAS_POR_PLAN = { mensual: 4, trimestral: 12 };
-// Porcentaje de la comision de Aseada que se devuelve al cliente por pagar el
-// plan completo por adelantado. Sale solo de la comision: el aseador cobra su
-// precio completo, y la rentabilidad baja en la misma proporcion que el
-// descuento. Pagar por adelantado no ahorra comision de Flow (cobra un
-// porcentaje por transaccion), asi que el descuento se mantiene chico.
-const DESCUENTO_PLAN_SOBRE_COMISION = { mensual: 0.10, trimestral: 0.15 };
 
 /**
- * Precio de cada visita de un plan. El aseador cobra lo mismo que en una visita
- * suelta: el descuento sale de la comision de Aseada, asi que bajan la comision
- * y su IVA, y el subtotal (lo que recibe el aseador) no cambia.
+ * Comision que, sumada al subtotal y su IVA, da exactamente el precio final.
+ * Prueba los valores vecinos porque no todo total es alcanzable con enteros.
  */
-function precioVisitaPlan(precio, tasaIva, tipo) {
-  const descuento = Math.round(precio.comision * DESCUENTO_PLAN_SOBRE_COMISION[tipo]);
-  const comision = precio.comision - descuento;
+function comisionParaPrecio(precioFinal, subtotal, tasaIva) {
+  const objetivo = precioFinal - subtotal;
+  const aproximada = Math.round(objetivo / (1 + tasaIva));
+  let mejor = aproximada;
+  for (let c = aproximada - 2; c <= aproximada + 2; c++) {
+    const error = Math.abs(c + Math.round(c * tasaIva) - objetivo);
+    if (error < Math.abs(mejor + Math.round(mejor * tasaIva) - objetivo)) mejor = c;
+  }
+  return mejor;
+}
+
+/**
+ * Precio de cada visita de un plan: el precio de lista de la visita suelta
+ * menos el descuento del plan. El aseador cobra lo mismo que en una visita
+ * suelta; el descuento sale de la comision de Aseada.
+ */
+function precioVisitaPlan(lista, { tasaIva, descuento }) {
+  const total = Math.round(lista.total_cliente * (1 - descuento) / 10) * 10;
+  const comision = comisionParaPrecio(total, lista.subtotal, tasaIva);
   const iva = Math.round(comision * tasaIva);
-  return { ...precio, comision, iva, total_cliente: precio.subtotal + comision + iva, descuento };
+  const total_cliente = lista.subtotal + comision + iva;
+  return { ...lista, comision, iva, total_cliente, descuento_clp: lista.total_cliente - total_cliente };
 }
 
 /** Reparte un monto de Flow entre las visitas en proporcion a lo que paga cada una. La ultima recibe el resto. */
@@ -414,8 +424,24 @@ async function promoverVisitasDelDia(db, { ahora = new Date() } = {}) {
   return rows;
 }
 
+/**
+ * Reembolsos iniciados hace mas de 72 horas que Flow todavia no confirma como
+ * devueltos. Se marcan al devolverlos, asi el aviso a los administradores sale
+ * una sola vez.
+ */
+async function reembolsosSinConfirmar(db, { ahora = new Date(), horas = 72 } = {}) {
+  const limite = new Date(ahora.getTime() - horas * HORA_MS);
+  const { rows } = await db.query(
+    `UPDATE pagos SET reembolso_alerta_en=$2
+     WHERE flow_refund_token IS NOT NULL AND reembolso_alerta_en IS NULL
+       AND reembolsado_en <= $1
+       AND COALESCE(flow_refund_status, '') NOT IN ('refunded', 'rejected', 'cancelled')
+     RETURNING *`, [limite, ahora]);
+  return rows;
+}
+
 module.exports = {
-  VISITAS_POR_PLAN, precioVisitaPlan, activarPlan, promoverVisitasDelDia,
+  VISITAS_POR_PLAN, comisionParaPrecio, precioVisitaPlan, activarPlan, promoverVisitasDelDia, reembolsosSinConfirmar,
   HORAS_REVISION, MOTIVOS_RECLAMO, HORAS_TOLERANCIA_LLEGADA,
   enTransaccion, tasaRetencion, calcularLiquidacion, registrarDatosFlow,
   liberarServicio, liberarVencidos, marcarFondosDisponibles,

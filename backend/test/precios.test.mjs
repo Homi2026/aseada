@@ -55,23 +55,27 @@ test('el ajuste de comision no toca lo que recibe el aseador', () => {
   }
 });
 
-// Fuera del paquete manda la formula general, no la tarifa de lista.
-test('con materiales u horas extra se vuelve al 20% dinamico', () => {
+// Cada visita suelta tiene precio de lista: termina en :990 y la comision
+// nunca baja de la que daba la formula de 20%, para que el plan con descuento
+// no le reste rentabilidad a Aseada.
+test('con materiales u horas extra el precio de lista no baja la comision del 20%', () => {
   const conMateriales = calcularPrecio(50, 0, true);
-  assert.equal(conMateriales.comision, Math.round(conMateriales.subtotal * 0.20),
-    'con materiales la comision deberia ser el 20% del subtotal');
+  assert.equal(conMateriales.total_cliente % 1000, 990);
+  assert.ok(conMateriales.comision >= Math.round(conMateriales.subtotal * 0.20),
+    'la comision no puede quedar bajo el 20% del subtotal');
 
   const conHorasExtra = calcularPrecio(50, 1, false);
-  assert.equal(conHorasExtra.comision, Math.round(conHorasExtra.subtotal * 0.20),
-    'con horas extra la comision deberia ser el 20% del subtotal');
+  assert.equal(conHorasExtra.total_cliente % 1000, 990);
+  assert.ok(conHorasExtra.comision >= Math.round(conHorasExtra.subtotal * 0.20));
   assert.ok(conHorasExtra.subtotal > conHorasExtra.precio_base,
     'las horas extra deberian sumarse al subtotal');
 });
 
-test('un tramo sin tarifa de lista usa el 20% dinamico', () => {
+test('un tramo sin tarifa publicitada tambien tiene precio de lista de 990', () => {
   // 80m2 no esta entre los paquetes publicitados.
   const p = calcularPrecio(80, 0, false);
-  assert.equal(p.comision, Math.round(p.subtotal * 0.20));
+  assert.equal(p.total_cliente % 1000, 990);
+  assert.ok(p.comision >= Math.round(p.subtotal * 0.20));
 });
 
 test('mixto no tiene tarifa de lista y cae al 20%', () => {

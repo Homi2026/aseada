@@ -16,21 +16,21 @@ const colors = {
 const FONT_FAMILY = Platform.select({ web: "'Bricolage Grotesque', -apple-system, sans-serif", default: undefined });
 
 const plans = [
-  { size: 'Depto pequeño', coverage: 'Hasta 50 m²', duration: '3 horas', price: '$39.990' },
-  { size: 'Casa mediana', coverage: 'Hasta 120 m²', duration: '4 horas', price: '$62.990', popular: true },
-  { size: 'Casa grande', coverage: 'Hasta 200 m²', duration: '5 horas', price: '$84.990' },
+  { size: 'Depto pequeño', coverage: 'Hasta 50 m²', duration: '3 horas', price: '$44.990' },
+  { size: 'Casa mediana', coverage: 'Hasta 120 m²', duration: '4 horas', price: '$69.990', popular: true },
+  { size: 'Casa grande', coverage: 'Hasta 200 m²', duration: '5 horas', price: '$94.990' },
 ];
 
 // Los valores del ticket tienen que existir en la tabla de precios del
 // servidor: 65 m² de aseo sin materiales cae en el tramo de 80 m², que son
-// 4 horas incluidas y $43.330 finales para el cliente.
+// 4 horas incluidas y $48.990 finales para el cliente.
 const ticketRows = [
   { label: 'Servicio', value: 'Aseo profundo' },
   { label: 'Dónde', value: 'Providencia, 65 m²' },
   { label: 'Cuándo', value: 'Miércoles, 10:00' },
   { label: 'Aseador', value: 'María T. (4.9 ★)' },
 ];
-const TICKET_TOTAL = '$43.330';
+const TICKET_TOTAL = '$48.990';
 
 function TactileButton({
   label,

@@ -12,33 +12,57 @@ const P = require('../pagos-trabajador.js');
 
 const silencio = () => {};
 const IVA = 0.19;
-const DESCUENTO = 0.10;
-// Precio de lista de una visita de 50 m2 sin materiales: lo que calcularPrecio() devuelve.
-const LISTA_50 = { precio_base: 28000, subtotal: 28000, comision: 14277, iva: 2713, total_cliente: 44990,
-  worker_recibe: 28000, retencion_honorarios: 4270, horas_incluidas: 3 };
-const precioPlan = (lista) => P.precioVisitaPlan(lista, { tasaIva: IVA, descuento: DESCUENTO });
+const FLOW = 0.0289 * 1.19;
+const CPA = 5000;
+const DESCUENTO = { mensual: 0.12, trimestral: 0.15 };
+const flow = (total) => Math.round(FLOW * total);
 
-test('el plan descuenta 10% del precio de lista, sin tocar lo que recibe el aseador', () => {
-  const v = precioPlan(LISTA_50);
-  assert.equal(v.total_cliente, 40490);
-  assert.equal(v.descuento_clp, 4500);
-  assert.equal(v.comision, 10496);
-  assert.equal(v.worker_recibe, 28000);
+// Precio de lista de una visita de 50 m2 sin materiales (lo que calcularPrecio() devuelve).
+const LISTA_50 = { precio_base: 28000, subtotal: 28000, comision: 11756, iva: 2234, total_cliente: 41990,
+  worker_recibe: 28000, retencion_honorarios: 4270, horas_incluidas: 3 };
+const precioPlan = (lista, tipo) => P.precioVisitaPlan(lista, { tasaIva: IVA, descuento: DESCUENTO[tipo] });
+
+test('el plan mensual de 50 m2 cobra $36.950 por visita (12% bajo la lista)', () => {
+  const v = precioPlan(LISTA_50, 'mensual');
+  assert.equal(v.total_cliente, 36950);
+  assert.equal(v.worker_recibe, 28000, 'el aseador cobra su precio completo');
+  assert.equal(v.descuento_clp, 5040);
 });
 
-test('el plan cobra al menos lo mismo que la visita de hoy en cada tramo (la rentabilidad no baja)', () => {
-  // Visita de hoy: comision y total con la tabla anterior a este cambio.
-  const hoy = [
-    { lista: { ...LISTA_50 }, comisionHoy: 10076, totalHoy: 39990 },
-    { lista: { ...LISTA_50, subtotal: 35000, comision: 11756, total_cliente: 48990, worker_recibe: 35000 }, comisionHoy: 7000, totalHoy: 43330 },
-    { lista: { ...LISTA_50, subtotal: 50000, comision: 16798, total_cliente: 69990, worker_recibe: 50000 }, comisionHoy: 10916, totalHoy: 62990 },
-    { lista: { ...LISTA_50, subtotal: 68000, comision: 22681, total_cliente: 94990, worker_recibe: 68000 }, comisionHoy: 14277, totalHoy: 84990 },
-    { lista: { ...LISTA_50, subtotal: 80000, comision: 26042, total_cliente: 110990, worker_recibe: 80000 }, comisionHoy: 16000, totalHoy: 99040 }
-  ];
-  for (const { lista, comisionHoy, totalHoy } of hoy) {
-    const v = precioPlan(lista);
-    assert.ok(v.comision >= comisionHoy, `comision del plan ${v.comision} vs hoy ${comisionHoy} (subtotal ${lista.subtotal})`);
-    assert.ok(v.total_cliente >= totalHoy - 10, `precio del plan ${v.total_cliente} vs hoy ${totalHoy}`);
+test('el plan de 3 meses de 50 m2 cobra $35.690 por visita (15% bajo la lista)', () => {
+  const v = precioPlan(LISTA_50, 'trimestral');
+  assert.equal(v.total_cliente, 35690);
+  assert.equal(v.descuento_clp, 6300);
+});
+
+// Tramos con su lista y su descuento de plan (10% fuera del tramo de 50 m2).
+const TRAMOS = [
+  { nombre: '50 m2 mensual', subtotal: 28000, lista: 41990, tipo: 'mensual' },
+  { nombre: '50 m2 3 meses', subtotal: 28000, lista: 41990, tipo: 'trimestral' },
+  { nombre: '65 m2', subtotal: 35000, lista: 48990, tipo: 'mensual', descuento: 0.10 },
+  { nombre: '120 m2', subtotal: 50000, lista: 69990, tipo: 'mensual', descuento: 0.10 },
+  { nombre: '200 m2', subtotal: 68000, lista: 94990, tipo: 'mensual', descuento: 0.10 },
+  { nombre: '250 m2', subtotal: 80000, lista: 110990, tipo: 'mensual', descuento: 0.10 }
+];
+
+test('cada plan deja al menos 12% de margen neto despues de Flow, en todos los tramos', () => {
+  for (const t of TRAMOS) {
+    const comision = P.comisionParaPrecio(t.lista, t.subtotal, IVA);
+    const lista = { ...LISTA_50, subtotal: t.subtotal, comision, iva: Math.round(comision * IVA), total_cliente: t.lista };
+    const d = t.descuento ?? DESCUENTO[t.tipo];
+    const v = P.precioVisitaPlan(lista, { tasaIva: IVA, descuento: d });
+    const neto = v.comision - flow(v.total_cliente);
+    assert.ok(neto / v.total_cliente >= 0.12, `${t.nombre}: margen neto ${(neto / v.total_cliente * 100).toFixed(1)}% bajo el 12%`);
+  }
+});
+
+test('el plan mensual recupera el CPA de $5.000 en el primer mes, en todos los tramos', () => {
+  for (const t of TRAMOS.filter((x) => x.tipo === 'mensual')) {
+    const comision = P.comisionParaPrecio(t.lista, t.subtotal, IVA);
+    const lista = { ...LISTA_50, subtotal: t.subtotal, comision, iva: Math.round(comision * IVA), total_cliente: t.lista };
+    const v = P.precioVisitaPlan(lista, { tasaIva: IVA, descuento: t.descuento ?? DESCUENTO.mensual });
+    const neto = v.comision - flow(v.total_cliente);
+    assert.ok(4 * neto - CPA > 0, `${t.nombre}: el primer mes no alcanza a pagar el CPA`);
   }
 });
 
@@ -48,7 +72,7 @@ async function planPendiente({ tipo = 'mensual', fechaInicio = '2026-09-28' } = 
   const cliente = (await db.query(
     "INSERT INTO usuarios(nombre,email,password,rol) VALUES('C','c@t.cl','h','cliente') RETURNING id")).rows[0].id;
   const visitas = P.VISITAS_POR_PLAN[tipo];
-  const precio = precioPlan(LISTA_50);
+  const precio = precioPlan(LISTA_50, tipo);
   const total = precio.total_cliente * visitas;
   const { rows: [plan] } = await db.query(
     `INSERT INTO planes(cliente_id,tipo,direccion,metros,con_materiales,visitas,fecha_inicio,precio_visita,total,estado,flow_token,flow_order)
@@ -57,12 +81,12 @@ async function planPendiente({ tipo = 'mensual', fechaInicio = '2026-09-28' } = 
   return { db, cliente, plan: plan.id, total, precio, visitas };
 }
 
-const calcularVisita = () => precioPlan(LISTA_50);
+const calcularVisita = (tipo) => () => precioPlan(LISTA_50, tipo);
 
 test('al confirmar el cobro se crean las visitas, una cada 7 dias, todas programadas', async () => {
   const e = await planPendiente({ tipo: 'mensual', fechaInicio: '2026-09-28' });
   const r = await P.enTransaccion(e.db, (db) =>
-    P.activarPlan(db, 'tok-plan', { fee: 0, taxes: 0, balance: e.total }, { calcularVisita }));
+    P.activarPlan(db, 'tok-plan', { fee: 0, taxes: 0, balance: e.total }, { calcularVisita: calcularVisita('mensual') }));
   assert.equal(r.visitas.length, 4);
   const { rows } = await e.db.query(
     "SELECT numero_visita, estado, plan_id, fecha_servicio::text AS f FROM servicios WHERE plan_id=$1 ORDER BY numero_visita", [e.plan]);
@@ -75,7 +99,7 @@ test('al confirmar el cobro se crean las visitas, una cada 7 dias, todas program
 test('cada visita tiene su pago pagado, y la suma de los pagos es el total del plan', async () => {
   const e = await planPendiente({ tipo: 'trimestral' });
   await P.enTransaccion(e.db, (db) =>
-    P.activarPlan(db, 'tok-plan', { fee: 1000, taxes: 200, balance: e.total - 1200 }, { calcularVisita }));
+    P.activarPlan(db, 'tok-plan', { fee: 1000, taxes: 200, balance: e.total - 1200 }, { calcularVisita: calcularVisita('trimestral') }));
   const { rows: [suma] } = await e.db.query(
     "SELECT COUNT(*)::int AS n, SUM(monto_total)::int AS monto, SUM(flow_comision)::int AS fee, SUM(flow_deposito)::int AS dep, BOOL_AND(estado='pagado') AS todos_pagados FROM pagos WHERE servicio_id IN (SELECT id FROM servicios WHERE plan_id=$1)", [e.plan]);
   assert.equal(suma.n, 12);
@@ -87,8 +111,8 @@ test('cada visita tiene su pago pagado, y la suma de los pagos es el total del p
 
 test('confirmar dos veces el mismo cobro no duplica las visitas', async () => {
   const e = await planPendiente({ tipo: 'mensual' });
-  await P.enTransaccion(e.db, (db) => P.activarPlan(db, 'tok-plan', {}, { calcularVisita }));
-  const segunda = await P.enTransaccion(e.db, (db) => P.activarPlan(db, 'tok-plan', {}, { calcularVisita }));
+  await P.enTransaccion(e.db, (db) => P.activarPlan(db, 'tok-plan', {}, { calcularVisita: calcularVisita('mensual') }));
+  const segunda = await P.enTransaccion(e.db, (db) => P.activarPlan(db, 'tok-plan', {}, { calcularVisita: calcularVisita('mensual') }));
   assert.equal(segunda.yaActivado, true);
   const { rows: [c] } = await e.db.query('SELECT COUNT(*)::int AS n FROM servicios WHERE plan_id=$1', [e.plan]);
   assert.equal(c.n, 4);
@@ -96,7 +120,7 @@ test('confirmar dos veces el mismo cobro no duplica las visitas', async () => {
 
 test('una visita se publica solo el dia que le toca, no antes', async () => {
   const e = await planPendiente({ tipo: 'mensual', fechaInicio: '2026-09-28' });
-  await P.enTransaccion(e.db, (db) => P.activarPlan(db, 'tok-plan', {}, { calcularVisita }));
+  await P.enTransaccion(e.db, (db) => P.activarPlan(db, 'tok-plan', {}, { calcularVisita: calcularVisita('mensual') }));
 
   const antes = await P.promoverVisitasDelDia(e.db, { ahora: new Date('2026-09-27T15:00:00Z') });
   assert.equal(antes.length, 0, 'el dia antes no se publica nada');

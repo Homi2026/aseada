@@ -164,15 +164,20 @@ const RETENCION_HONORARIOS = 0.1525;
 // Se sube a 10076 para que la utilidad aguante un CPA bastante mas alto que
 // la estimacion antes de partir en rojo.
 const COMISION_LISTA_ASEO = { 50: 10076, 120: 10916, 200: 14277 };
-// El precio de lista de una visita suelta sube ~11% sobre el de hoy, y un
-// plan descuenta 10% de esa lista: el plan cobra lo mismo que la visita de
-// hoy, asi que su rentabilidad no baja. La diferencia la gana Aseada en la
-// visita suelta; el aseador cobra lo mismo en ambos casos.
-const DESCUENTO_PLAN = 0.10;
-// Precio final de lista: el :990 mas cercano que cubra el precio de hoy
-// dividido por (1 - DESCUENTO_PLAN).
-const aPrecioLista = (precioDeHoy) => {
-  const minimo = precioDeHoy / (1 - DESCUENTO_PLAN);
+// La visita suelta tiene un precio de lista mas alto que el de hoy, y el plan
+// descuenta sobre esa lista. En el tramo de 50 m2 (el mas barato, donde la
+// comision ya es alta) el recargo es 5% y el descuento de plan 12% mensual o
+// 15% trimestral; en los demas tramos el recargo es ~11% y el descuento 10%,
+// para que el plan cobre lo mismo que hoy y la rentabilidad no baje. El
+// aseador cobra lo mismo en todos los casos.
+const RECARGO_LISTA = { 50: 0.05 };
+const RECARGO_LISTA_POR_DEFECTO = 1 / 0.9 - 1;
+const DESCUENTO_PLAN = { mensual: { 50: 0.12 }, trimestral: { 50: 0.15 } };
+const DESCUENTO_PLAN_POR_DEFECTO = 0.10;
+const descuentoPlan = (tipo, metros) => (metros <= 50 ? DESCUENTO_PLAN[tipo][50] : DESCUENTO_PLAN_POR_DEFECTO);
+// Precio final de lista: el :990 mas cercano que cubra el precio de hoy con su recargo.
+const aPrecioLista = (precioDeHoy, tramo) => {
+  const minimo = precioDeHoy * (1 + (RECARGO_LISTA[tramo] ?? RECARGO_LISTA_POR_DEFECTO));
   return Math.ceil((minimo - 990) / 1000) * 1000 + 990;
 };
 // El tramo 50 de fumigacion llevaba una comision de 15958 (un 32% del base)
@@ -218,7 +223,7 @@ function calcularPrecio(metros, horas_extra, con_materiales, tipo_servicio = 'as
   const comisionDeHoy = (!con_materiales && !extra) ? COMISION_LISTA_ASEO[limiteUsado] : undefined;
   const cDeHoy = comisionDeHoy ?? Math.round(subtotal * COMISION);
   const totalDeHoy = subtotal + cDeHoy + Math.round(cDeHoy * IVA);
-  const total_lista = aPrecioLista(totalDeHoy);
+  const total_lista = aPrecioLista(totalDeHoy, limiteUsado);
   const comision = pagosTrabajador.comisionParaPrecio(total_lista, subtotal, IVA);
   const iva = Math.round(comision * IVA);
   const total_cliente = subtotal + comision + iva;
@@ -688,7 +693,7 @@ app.post('/api/servicios', verificarToken, async (req, res) => {
 // Un plan cobra por adelantado varias visitas semanales. Las visitas se crean
 // al confirmar el cobro y se publican a la bolsa el dia que les toca.
 const precioVisitaDelPlan = (plan) =>
-  pagosTrabajador.precioVisitaPlan(calcularPrecio(Number(plan.metros), 0, Boolean(plan.con_materiales), 'aseo'), { tasaIva: IVA, descuento: DESCUENTO_PLAN });
+  pagosTrabajador.precioVisitaPlan(calcularPrecio(Number(plan.metros), 0, Boolean(plan.con_materiales), 'aseo'), { tasaIva: IVA, descuento: descuentoPlan(plan.tipo, Number(plan.metros)) });
 
 function cotizarPlan({ tipo, metros, con_materiales = false }) {
   const visitas = pagosTrabajador.VISITAS_POR_PLAN[tipo];

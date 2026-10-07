@@ -164,6 +164,17 @@ const RETENCION_HONORARIOS = 0.1525;
 // Se sube a 10076 para que la utilidad aguante un CPA bastante mas alto que
 // la estimacion antes de partir en rojo.
 const COMISION_LISTA_ASEO = { 50: 10076, 120: 10916, 200: 14277 };
+// El precio de lista de una visita suelta sube ~11% sobre el de hoy, y un
+// plan descuenta 10% de esa lista: el plan cobra lo mismo que la visita de
+// hoy, asi que su rentabilidad no baja. La diferencia la gana Aseada en la
+// visita suelta; el aseador cobra lo mismo en ambos casos.
+const DESCUENTO_PLAN = 0.10;
+// Precio final de lista: el :990 mas cercano que cubra el precio de hoy
+// dividido por (1 - DESCUENTO_PLAN).
+const aPrecioLista = (precioDeHoy) => {
+  const minimo = precioDeHoy / (1 - DESCUENTO_PLAN);
+  return Math.ceil((minimo - 990) / 1000) * 1000 + 990;
+};
 // El tramo 50 de fumigacion llevaba una comision de 15958 (un 32% del base)
 // mientras el resto de los tramos usa el 20% dinamico, y eso daba vuelta la
 // escalera: un depto de 40 m2 pagaba $64.990 y una casa de 100 m2 $61.776.
@@ -204,8 +215,11 @@ function calcularPrecio(metros, horas_extra, con_materiales, tipo_servicio = 'as
   const precio_base = PRECIOS[limiteUsado][con_materiales ? 'con_materiales' : 'sin_materiales'];
   const extra = HORAS_EXTRA[horas_extra] || 0;
   const subtotal = precio_base + extra;
-  const comisionLista = (!con_materiales && !extra) ? COMISION_LISTA_ASEO[limiteUsado] : undefined;
-  const comision = comisionLista ?? Math.round(subtotal * COMISION);
+  const comisionDeHoy = (!con_materiales && !extra) ? COMISION_LISTA_ASEO[limiteUsado] : undefined;
+  const cDeHoy = comisionDeHoy ?? Math.round(subtotal * COMISION);
+  const totalDeHoy = subtotal + cDeHoy + Math.round(cDeHoy * IVA);
+  const total_lista = aPrecioLista(totalDeHoy);
+  const comision = pagosTrabajador.comisionParaPrecio(total_lista, subtotal, IVA);
   const iva = Math.round(comision * IVA);
   const total_cliente = subtotal + comision + iva;
   const worker_recibe = subtotal;
@@ -674,7 +688,7 @@ app.post('/api/servicios', verificarToken, async (req, res) => {
 // Un plan cobra por adelantado varias visitas semanales. Las visitas se crean
 // al confirmar el cobro y se publican a la bolsa el dia que les toca.
 const precioVisitaDelPlan = (plan) =>
-  pagosTrabajador.precioVisitaPlan(calcularPrecio(Number(plan.metros), 0, Boolean(plan.con_materiales), 'aseo'), IVA, plan.tipo);
+  pagosTrabajador.precioVisitaPlan(calcularPrecio(Number(plan.metros), 0, Boolean(plan.con_materiales), 'aseo'), { tasaIva: IVA, descuento: DESCUENTO_PLAN });
 
 function cotizarPlan({ tipo, metros, con_materiales = false }) {
   const visitas = pagosTrabajador.VISITAS_POR_PLAN[tipo];
@@ -1026,9 +1040,18 @@ app.post('/pagos/flow/reembolso-confirmacion', exigirFlow, async (req, res) => {
   try {
     const { token } = req.body;
     const refundData = await flowGet('/refund/getStatus', { token });
-    await pool.query(
-      'UPDATE pagos SET flow_refund_status=$2, flow_refund_status_en=NOW() WHERE flow_refund_token=$1',
-      [token, refundData.status]);
+    const { rows: [pago] } = await pool.query(
+      'UPDATE pagos SET flow_refund_status=$2, flow_refund_status_en=NOW() WHERE flow_refund_token=$1 RETURNING *',
+      [token, String(refundData.status)]);
+    if (pago && ['rejected', 'cancelled'].includes(refundData.status)) {
+      await notificar(await idsAdmins(), 'reembolso', `El reembolso del servicio #${pago.servicio_id} no se completó`,
+        `Flow lo marcó como ${refundData.status}: el cliente no recibió su dinero. Hay que contactarlo para resolverlo.`,
+        { servicio_id: pago.servicio_id });
+    }
+    if (pago && refundData.status === 'refunded') {
+      await notificar(pago.cliente_id, 'reembolso', 'Tu devolución quedó completa',
+        `Ya te devolvimos ${pesos(pago.monto_total)} por el servicio #${pago.servicio_id}.`, { servicio_id: pago.servicio_id });
+    }
     res.json({ ok: true });
   } catch(e) { responderErrorFlow(res, e); }
 });
@@ -1080,7 +1103,13 @@ async function procesoDiario() {
   for (const servicio of noLlegaron) await avisarNoLlegada(servicio);
   const publicadas = await pagosTrabajador.promoverVisitasDelDia(pool);
   for (const servicio of publicadas) await notificarWorkers(servicio);
-  return { liberados: liberados.length, disponibles: disponibles.length, no_llegaron: noLlegaron.length, publicadas: publicadas.length };
+  const sinConfirmar = await pagosTrabajador.reembolsosSinConfirmar(pool);
+  for (const pago of sinConfirmar) {
+    await notificar(await idsAdmins(), 'reembolso', `Reembolso sin confirmar hace 72 horas: servicio #${pago.servicio_id}`,
+      `Flow todavía no informa la devolución de ${pesos(pago.monto_total)}. Revisa el panel de Flow y, si hace falta, contacta al cliente.`,
+      { servicio_id: pago.servicio_id });
+  }
+  return { liberados: liberados.length, disponibles: disponibles.length, no_llegaron: noLlegaron.length, publicadas: publicadas.length, reembolsos_sin_confirmar: sinConfirmar.length };
 }
 
 app.get('/api/cron/diario', async (req, res) => {

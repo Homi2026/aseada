@@ -61,6 +61,15 @@ test('confirmar y reclamar son solo del cliente', async () => {
   });
 });
 
+test('cotizar y contratar un plan son solo del cliente', async () => {
+  await conServidor(async (base) => {
+    for (const ruta of ['/api/planes/cotizar', '/api/planes']) {
+      assert.equal((await pedir(base, 'POST', ruta)).status, 401, `${ruta} sin sesion`);
+      assert.equal((await pedir(base, 'POST', ruta, 'worker')).status, 403, `${ruta} como trabajador`);
+    }
+  });
+});
+
 test('reagendar y pedir el reembolso son solo del cliente', async () => {
   await conServidor(async (base) => {
     for (const ruta of ['/api/servicios/1/reagendar', '/api/servicios/1/pedir-reembolso']) {

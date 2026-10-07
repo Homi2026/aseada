@@ -7,6 +7,10 @@ import { api } from './api';
  */
 export async function irAPagar(servicioId: number, token: string) {
   const { url_pago } = await api.post('/api/pagos/crear', { servicio_id: servicioId }, token);
+  await abrirPago(url_pago);
+}
+
+export async function abrirPago(url_pago: string | undefined) {
   if (!url_pago) throw new Error('Flow no devolvió el enlace de pago');
   if (Platform.OS === 'web') {
     window.location.href = url_pago;
@@ -18,6 +22,7 @@ export async function irAPagar(servicioId: number, token: string) {
 /** Los estados que no dependen de si el aseador ya marco su llegada. */
 const ESTADOS_CLIENTE_FIJOS: Record<string, { texto: string; color: string }> = {
   pendiente_pago: { texto: 'Falta pagar', color: '#b45309' },
+  programado: { texto: 'Programada · se busca aseador el día de la visita', color: '#0369a1' },
   buscando_worker: { texto: 'Pago retenido · buscando trabajador', color: '#1d4ed8' },
   completado: { texto: 'Terminado · confirma si quedó bien', color: '#7c3aed' },
   en_reclamo: { texto: 'Reclamo en revisión · pago retenido', color: '#b91c1c' },

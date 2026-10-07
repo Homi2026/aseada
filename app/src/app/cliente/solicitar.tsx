@@ -5,14 +5,7 @@ import { api, esSesionVencida } from '../../constants/api';
 import { obtenerSesion, volverAlLogin } from '../../constants/auth';
 import { avisar, confirmar } from '../../constants/dialogos';
 import { GARANTIA, irAPagar } from '../../constants/pagos';
-
-const TAMANIOS = [
-  { label: 'Departamento pequeño', metros: 40, horas: 3, icono: '🏠' },
-  { label: 'Departamento mediano', metros: 65, horas: 4, icono: '🏡' },
-  { label: 'Casa mediana', metros: 100, horas: 4, icono: '🏘️' },
-  { label: 'Casa grande', metros: 150, horas: 5, icono: '🏰' },
-  { label: 'Casa muy grande', metros: 250, horas: 6, icono: '🏯' },
-];
+import { TAMANIOS } from '../../constants/tamanios';
 
 const PLAGAS = [
   { id: 'insectos', label: 'Insectos', detail: 'Cucarachas, hormigas y arañas', icono: '🪳' },
@@ -185,6 +178,12 @@ export default function Solicitar() {
         </View>
       )}
 
+      {tipoServicio === 'aseo' && (
+        <TouchableOpacity style={styles.enlacePlan} onPress={() => router.push('/cliente/plan')}>
+          <Text style={styles.enlacePlanTexto}>¿Prefieres una visita por semana? Ver planes mensual y de 3 meses →</Text>
+        </TouchableOpacity>
+      )}
+
       <Text style={styles.seccion}>Dónde y cuándo</Text>
       <TextInput style={styles.input} placeholder="Dirección del servicio" value={direccion} onChangeText={setDireccion} />
       <TextInput style={styles.input} placeholder="Fecha preferida (ej: 25/09/2026)" value={fechaServicio} onChangeText={setFechaServicio} />
@@ -232,5 +231,7 @@ const styles = StyleSheet.create({
   garantiaTexto: { color: '#344238', fontSize: 13, lineHeight: 19 },
   btn: { backgroundColor: '#6C63FF', borderRadius: 12, padding: 18, alignItems: 'center', marginBottom: 40 },
   btnDesactivado: { backgroundColor: '#ccc' },
+  enlacePlan: { padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#cfd4f5', backgroundColor: '#f5f6ff', marginBottom: 16 },
+  enlacePlanTexto: { color: '#4b44c9', fontSize: 14, fontWeight: '600', lineHeight: 20 },
   btnTexto: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });

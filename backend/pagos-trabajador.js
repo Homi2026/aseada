@@ -330,7 +330,92 @@ async function listarPendientes(db) {
   return rows;
 }
 
+const VISITAS_POR_PLAN = { mensual: 4, trimestral: 12 };
+// Porcentaje de la comision de Aseada que se devuelve al cliente por pagar el
+// plan completo por adelantado. Sale solo de la comision: el aseador cobra su
+// precio completo, y la rentabilidad baja en la misma proporcion que el
+// descuento. Pagar por adelantado no ahorra comision de Flow (cobra un
+// porcentaje por transaccion), asi que el descuento se mantiene chico.
+const DESCUENTO_PLAN_SOBRE_COMISION = { mensual: 0.10, trimestral: 0.15 };
+
+/**
+ * Precio de cada visita de un plan. El aseador cobra lo mismo que en una visita
+ * suelta: el descuento sale de la comision de Aseada, asi que bajan la comision
+ * y su IVA, y el subtotal (lo que recibe el aseador) no cambia.
+ */
+function precioVisitaPlan(precio, tasaIva, tipo) {
+  const descuento = Math.round(precio.comision * DESCUENTO_PLAN_SOBRE_COMISION[tipo]);
+  const comision = precio.comision - descuento;
+  const iva = Math.round(comision * tasaIva);
+  return { ...precio, comision, iva, total_cliente: precio.subtotal + comision + iva, descuento };
+}
+
+/** Reparte un monto de Flow entre las visitas en proporcion a lo que paga cada una. La ultima recibe el resto. */
+function repartirEntre(valor, partes, total) {
+  if (valor === null) return partes.map(() => null);
+  const cuotas = [];
+  let acumulado = 0;
+  partes.forEach((parte, i) => {
+    const cuota = i === partes.length - 1 ? valor - acumulado : Math.round(valor * parte / total);
+    cuotas.push(cuota);
+    acumulado += cuota;
+  });
+  return cuotas;
+}
+
+/**
+ * Flow confirmo el cobro de un plan: crea sus visitas (servicios 'programado',
+ * una cada 7 dias desde fecha_inicio) y un pago por cada una. Quien la llama
+ * tiene que pasarle un `db` dentro de una transaccion, igual que liberarServicio.
+ */
+async function activarPlan(db, flowToken, flowData = {}, { calcularVisita, ahora = new Date() } = {}) {
+  const { rows: [plan] } = await db.query('SELECT *, fecha_inicio::text AS fecha_txt FROM planes WHERE flow_token=$1 FOR UPDATE', [flowToken]);
+  if (!plan) return null;
+  if (plan.estado !== 'pendiente_pago') return { plan, yaActivado: true };
+
+  const precioVisita = calcularVisita(plan);
+  await db.query("UPDATE planes SET estado='activo', pagado_en=$2 WHERE id=$1", [plan.id, ahora]);
+
+  const entero = (v) => (v === undefined || v === null || v === '' ? null : Math.round(Number(v)));
+  const fee = repartirEntre(entero(flowData.fee), Array(plan.visitas).fill(precioVisita.total_cliente), plan.total);
+  const impuestos = repartirEntre(entero(flowData.taxes), Array(plan.visitas).fill(precioVisita.total_cliente), plan.total);
+  const deposito = repartirEntre(entero(flowData.balance), Array(plan.visitas).fill(precioVisita.total_cliente), plan.total);
+
+  const visitas = [];
+  for (let k = 1; k <= plan.visitas; k++) {
+    const { rows: [servicio] } = await db.query(
+      `INSERT INTO servicios(cliente_id,plan_id,numero_visita,direccion,fecha_servicio,metros,horas_extra,con_materiales,
+         precio_base,horas_extra_precio,subtotal,comision,iva,total_cliente,worker_recibe,retencion_honorarios,horas_incluidas,estado,tipo_servicio)
+       VALUES($1,$2,$3,$4,((($5::date + $6::int)::timestamp AT TIME ZONE 'America/Santiago') + interval '12 hours'),$7,0,$8,
+         $9,0,$10,$11,$12,$13,$14,$15,$16,'programado','aseo')
+       RETURNING *`,
+      [plan.cliente_id, plan.id, k, plan.direccion, plan.fecha_txt, (k - 1) * 7, plan.metros, plan.con_materiales,
+       precioVisita.precio_base, precioVisita.subtotal, precioVisita.comision, precioVisita.iva, precioVisita.total_cliente,
+       precioVisita.worker_recibe, precioVisita.retencion_honorarios, precioVisita.horas_incluidas]);
+    const i = k - 1;
+    await db.query(
+      `INSERT INTO pagos(servicio_id,cliente_id,monto_total,comision_aseada,pago_worker,estado,flow_order,pagado_en,
+         flow_comision,flow_impuestos,flow_deposito,flow_fecha_deposito)
+       VALUES($1,$2,$3,$4,$5,'pagado',$6,$7,$8,$9,$10,$11::timestamp AT TIME ZONE 'America/Santiago')`,
+      [servicio.id, plan.cliente_id, precioVisita.total_cliente, precioVisita.comision, precioVisita.worker_recibe,
+       plan.flow_order, ahora, fee[i], impuestos[i], deposito[i], flowData.transferDate || null]);
+    visitas.push(servicio);
+  }
+  return { plan: { ...plan, estado: 'activo' }, visitas };
+}
+
+/** Publica las visitas programadas cuyo dia ya llego (dia en Chile). */
+async function promoverVisitasDelDia(db, { ahora = new Date() } = {}) {
+  const { rows } = await db.query(
+    `UPDATE servicios SET estado='buscando_worker'
+     WHERE estado='programado'
+       AND (fecha_servicio AT TIME ZONE 'America/Santiago')::date <= ($1::timestamptz AT TIME ZONE 'America/Santiago')::date
+     RETURNING *`, [ahora]);
+  return rows;
+}
+
 module.exports = {
+  VISITAS_POR_PLAN, precioVisitaPlan, activarPlan, promoverVisitasDelDia,
   HORAS_REVISION, MOTIVOS_RECLAMO, HORAS_TOLERANCIA_LLEGADA,
   enTransaccion, tasaRetencion, calcularLiquidacion, registrarDatosFlow,
   liberarServicio, liberarVencidos, marcarFondosDisponibles,

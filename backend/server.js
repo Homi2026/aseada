@@ -670,6 +670,86 @@ app.post('/api/servicios', verificarToken, async (req, res) => {
   } catch(e) { fallo(res, e, 'crear el servicio'); }
 });
 
+// ─── PLANES ──────────────────────────────────────────────────────────────────
+// Un plan cobra por adelantado varias visitas semanales. Las visitas se crean
+// al confirmar el cobro y se publican a la bolsa el dia que les toca.
+const precioVisitaDelPlan = (plan) =>
+  pagosTrabajador.precioVisitaPlan(calcularPrecio(Number(plan.metros), 0, Boolean(plan.con_materiales), 'aseo'), IVA, plan.tipo);
+
+function cotizarPlan({ tipo, metros, con_materiales = false }) {
+  const visitas = pagosTrabajador.VISITAS_POR_PLAN[tipo];
+  if (!visitas) return { error: "'tipo' debe ser 'mensual' o 'trimestral'" };
+  const problema = revisarSolicitud({ metros, horas_extra: 0, tipo_servicio: 'aseo', tipo_plaga: null });
+  if (problema) return { error: problema };
+  const suelta = calcularPrecio(Number(metros), 0, Boolean(con_materiales), 'aseo').total_cliente;
+  const precio = precioVisitaDelPlan({ tipo, metros, con_materiales });
+  return { visitas, precio_visita: precio.total_cliente, precio_visita_suelta: suelta, total: precio.total_cliente * visitas, ahorro: (suelta - precio.total_cliente) * visitas };
+}
+
+app.post('/api/planes/cotizar', verificarToken, exigirRol('cliente'), (req, res) => {
+  const c = cotizarPlan(req.body || {});
+  if (c.error) return res.status(400).json({ error: c.error });
+  res.json(c);
+});
+
+app.post('/api/planes', verificarToken, exigirRol('cliente'), exigirFlow, async (req, res) => {
+  try {
+    const { tipo, metros, con_materiales = false, direccion, fecha_inicio } = req.body || {};
+    if (!direccion || String(direccion).trim() === '') return res.status(400).json({ error: 'Falta la dirección del servicio' });
+    const c = cotizarPlan(req.body || {});
+    if (c.error) return res.status(400).json({ error: c.error });
+    const hoy = diaEnChile(new Date());
+    const inicio = fecha_inicio || diaEnChile(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || inicio < hoy) return res.status(400).json({ error: 'La primera visita debe ser una fecha de hoy en adelante' });
+
+    // Mismo criterio que /api/pagos/crear: tocar "Pagar" dos veces no debe
+    // crear dos cobros del mismo plan.
+    const { rows: [pendiente] } = await pool.query(
+      "SELECT flow_token, creado_en FROM planes WHERE cliente_id=$1 AND estado='pendiente_pago' AND flow_token IS NOT NULL ORDER BY id DESC LIMIT 1",
+      [req.usuario.id]);
+    if (pendiente) {
+      const estadoFlow = await estadoEnFlow(pendiente.flow_token);
+      if (estadoFlow === 2) return res.status(409).json({ error: 'Ya recibimos el pago de tu plan. Dale unos segundos y revisa tu historial.' });
+      if (estadoFlow === 1) return res.json({ url_pago: urlDePago(pendiente.flow_token), token: pendiente.flow_token, reutilizada: true, total: c.total });
+      await pool.query("UPDATE planes SET estado='rechazado' WHERE flow_token=$1 AND estado='pendiente_pago'", [pendiente.flow_token]);
+    }
+
+    const comercialId = `ASEADA-PLAN-${req.usuario.id}-${Date.now()}`;
+    const flowData = await flowPost('/payment/create', {
+      commerceOrder: comercialId,
+      subject: `Plan ${tipo} Aseada (${c.visitas} visitas)`,
+      currency: 'CLP',
+      amount: c.total,
+      email: req.usuario.email,
+      urlConfirmation: `${PUBLIC_URL}/pagos/flow/plan/confirmacion`,
+      urlReturn: `${PUBLIC_URL}/pagos/flow/retorno`
+    });
+    await pool.query(
+      'INSERT INTO planes(cliente_id,tipo,direccion,metros,con_materiales,visitas,fecha_inicio,precio_visita,total,estado,flow_token,flow_order) VALUES($1,$2,$3,$4,$5,$6,$7::date,$8,$9,$10,$11,$12)',
+      [req.usuario.id, tipo, direccion, Number(metros), Boolean(con_materiales), c.visitas, inicio, c.precio_visita, c.total, 'pendiente_pago', flowData.token, comercialId]);
+    res.json({ url_pago: `${flowData.url}?token=${flowData.token}`, token: flowData.token, total: c.total });
+  } catch(e) { responderErrorFlow(res, e); }
+});
+
+app.post('/pagos/flow/plan/confirmacion', exigirFlow, async (req, res) => {
+  try {
+    const { token } = req.body;
+    const flowData = await flowGet('/payment/getStatus', { token });
+    if (flowData.status === 2) {
+      const r = await pagosTrabajador.enTransaccion(pool, (db) =>
+        pagosTrabajador.activarPlan(db, token, flowData.paymentData, { calcularVisita: precioVisitaDelPlan }));
+      if (r && !r.yaActivado) {
+        await notificar(r.plan.cliente_id, 'plan_activo', 'Tu plan quedó activo',
+          `Tienes ${r.visitas.length} visitas, una por semana. Cada una se publica el día que le toca y el pago queda retenido hasta que confirmes cada visita.`,
+          { servicio_id: r.visitas[0].id });
+      }
+    } else if (flowData.status === 3) {
+      await pool.query("UPDATE planes SET estado='rechazado' WHERE flow_token=$1 AND estado='pendiente_pago'", [token]);
+    }
+    res.json({ ok: true });
+  } catch(e) { responderErrorFlow(res, e); }
+});
+
 app.get('/api/servicios', verificarToken, async (req, res) => {
   try {
     if (req.usuario.rol !== 'worker') {
@@ -998,7 +1078,9 @@ async function procesoDiario() {
   }
   const noLlegaron = await pagosTrabajador.marcarNoLlegadas(pool);
   for (const servicio of noLlegaron) await avisarNoLlegada(servicio);
-  return { liberados: liberados.length, disponibles: disponibles.length, no_llegaron: noLlegaron.length };
+  const publicadas = await pagosTrabajador.promoverVisitasDelDia(pool);
+  for (const servicio of publicadas) await notificarWorkers(servicio);
+  return { liberados: liberados.length, disponibles: disponibles.length, no_llegaron: noLlegaron.length, publicadas: publicadas.length };
 }
 
 app.get('/api/cron/diario', async (req, res) => {

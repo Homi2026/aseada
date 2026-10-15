@@ -182,25 +182,10 @@ export default function Landing() {
         Precio sin materiales de limpieza. Puedes coordinar los insumos directo con tu aseador.
       </Text>
 
-      <View style={[styles.fumigationBand, compact && styles.fumigationBandCompact]}>
-        <View style={styles.fumigationCopy}>
-          <Text style={styles.fumigationTitle}>También cuidamos lo que no se ve</Text>
-          <Text style={styles.fumigationText}>
-            Fumigación residencial para insectos, roedores o ambos. Cuéntanos qué pasa en tu hogar y te damos un
-            precio referencial antes de solicitar.
-          </Text>
-        </View>
-        <View style={styles.fumigationStats}>
-          <View style={styles.fumigationStat}>
-            <Text style={styles.fumigationStatLabel}>Insectos</Text>
-            <Text style={styles.fumigationStatValue}>desde $59.990</Text>
-          </View>
-          <View style={styles.fumigationStat}>
-            <Text style={styles.fumigationStatLabel}>Roedores</Text>
-            <Text style={styles.fumigationStatValue}>desde $72.990</Text>
-          </View>
-        </View>
-      </View>
+      {/* La franja de fumigacion se saco el 15-10-2026: el Decreto 157/2005
+          exige autorizacion de la SEREMI y un responsable tecnico titulado en
+          faena. Los estilos `fumigation*` quedan para cuando se intermedien
+          empresas autorizadas. Ver FUMIGACION_HABILITADA en constants/sitio.ts. */}
 
       <View style={[styles.bottomBand, compact && styles.bottomBandCompact]}>
         <View style={styles.bottomCopy}>

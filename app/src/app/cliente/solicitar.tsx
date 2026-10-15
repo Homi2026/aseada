@@ -5,6 +5,7 @@ import { api, esSesionVencida } from '../../constants/api';
 import { obtenerSesion, volverAlLogin } from '../../constants/auth';
 import { avisar, confirmar } from '../../constants/dialogos';
 import { GARANTIA, irAPagar } from '../../constants/pagos';
+import { FUMIGACION_HABILITADA } from '../../constants/sitio';
 import { TAMANIOS } from '../../constants/tamanios';
 
 const PLAGAS = [
@@ -114,6 +115,7 @@ export default function Solicitar() {
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.titulo}>¿Qué necesitas resolver?</Text>
+      {FUMIGACION_HABILITADA && (
       <View style={styles.horas}>
         <TouchableOpacity style={[styles.tipoBtn, tipoServicio === 'aseo' && styles.horaBtnActivo]} onPress={() => seleccionarServicio('aseo')}>
           <Text style={styles.opcionIcono}>🧹</Text><Text style={styles.horaTexto}>Aseo del hogar</Text>
@@ -122,6 +124,7 @@ export default function Solicitar() {
           <Text style={styles.opcionIcono}>🪳</Text><Text style={styles.horaTexto}>Fumigación</Text>
         </TouchableOpacity>
       </View>
+      )}
 
       {tipoServicio === 'fumigacion' && (
         <>

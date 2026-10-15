@@ -260,6 +260,28 @@ const HORAS_EXTRA_MAX = 3;
 const PLAGAS = ['insectos', 'roedores', 'mixto'];
 const TIPOS_SERVICIO = ['aseo', 'fumigacion'];
 
+// La fumigacion esta APAGADA y no es una decision de producto: es la ley.
+//
+// El Decreto Supremo 157/2005 del Ministerio de Salud exige, para aplicar
+// plaguicidas de uso domestico y sanitario:
+//   art. 95  autorizacion sanitaria de la SEREMI para la empresa aplicadora;
+//   art. 104 un responsable tecnico con titulo profesional de ocho semestres
+//            que debe "estar presente en las faenas de aplicacion";
+//   art. 101 un certificado por cada tratamiento, firmado por ese responsable
+//            tecnico, con el numero de la resolucion sanitaria de la empresa.
+// Mandar a un aseador solo a una casa es incompatible con el art. 104, y sin
+// resolucion no hay certificado que emitir. Sanciones por el Libro Decimo del
+// Codigo Sanitario: multa de hasta 1.000 UTM, clausura o prohibicion de la
+// actividad.
+//
+// El calculo de precios se deja intacto a proposito. El camino que si funciona
+// es intermediar EMPRESAS ya autorizadas: ese dia se prende esta bandera, se
+// agrega la validacion de la resolucion sanitaria del prestador, y la tabla de
+// tarifas ya esta. Borrarla solo obligaria a rehacerla.
+const FUMIGACION_HABILITADA = false;
+/** Lo que de verdad se puede contratar hoy. Es lo que se le dice al cliente. */
+const TIPOS_SERVICIO_A_LA_VENTA = TIPOS_SERVICIO.filter((t) => t !== 'fumigacion' || FUMIGACION_HABILITADA);
+
 /** Numero entero de verdad, venga como numero o como texto. Si no, null. */
 function entero(valor) {
   if (typeof valor === 'number') return Number.isInteger(valor) ? valor : null;
@@ -298,7 +320,10 @@ function revisarSolicitud({ metros, horas_extra, tipo_servicio, tipo_plaga, fech
     return `Las horas extra deben ser un numero entero entre 0 y ${HORAS_EXTRA_MAX}.`;
   }
   if (!TIPOS_SERVICIO.includes(tipo_servicio)) {
-    return 'Tipo de servicio invalido: debe ser aseo o fumigacion.';
+    return `Tipo de servicio invalido: debe ser ${TIPOS_SERVICIO_A_LA_VENTA.join(' o ')}.`;
+  }
+  if (tipo_servicio === 'fumigacion' && !FUMIGACION_HABILITADA) {
+    return 'Por ahora no estamos tomando servicios de fumigación. Solo aseo del hogar.';
   }
   if (tipo_servicio === 'fumigacion' && !PLAGAS.includes(tipo_plaga)) {
     return `Para fumigar hay que indicar que plaga tratar: ${PLAGAS.join(', ')}.`;
@@ -1418,6 +1443,7 @@ module.exports = app;
 // cuanto recibe el aseador, asi que se expone aparte para poder probarla sin
 // levantar el servidor ni tocar la base.
 module.exports.calcularPrecio = calcularPrecio;
+module.exports.TIPOS_SERVICIO_A_LA_VENTA = TIPOS_SERVICIO_A_LA_VENTA;
 // Expuestos para probar como se traducen los rechazos de Flow.
 module.exports.FlowError = FlowError;
 module.exports.responderErrorFlow = responderErrorFlow;

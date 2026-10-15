@@ -87,19 +87,23 @@ test('los metros que la app si ofrece pasan', async () => {
   });
 });
 
-test('fumigar sin decir la plaga es un 400 en espanol, no un 500 de Postgres', async () => {
+// Esta prueba cambio el 15-10-2026. Antes verificaba que fumigar sin declarar
+// la plaga diera un 400 en castellano en vez de un 500 de Postgres, y que con
+// una plaga valida el servicio se creara (201). La fumigacion se apago por el
+// Decreto 157/2005, asi que ahora NINGUNA combinacion puede crear el servicio.
+// Lo que se conserva es la parte que sigue importando: que el rechazo sea un
+// 400 legible y que no filtre jerga de la base. El detalle de por que esta
+// apagada vive en test/fumigacion-apagada.test.mjs.
+test('fumigar se rechaza con un 400 legible, nunca con un 500 de Postgres', async () => {
   const e = await escenario();
   await conServidor(async (base) => {
-    for (const tipo_plaga of [undefined, null, '', 'termitas', 'INSECTOS']) {
+    const combinaciones = [undefined, null, '', 'termitas', 'INSECTOS', 'insectos', 'roedores', 'mixto'];
+    for (const tipo_plaga of combinaciones) {
       const res = await contratar(base, e.sesion, { metros: 50, tipo_servicio: 'fumigacion', tipo_plaga });
-      assert.equal(res.status, 400, `tipo_plaga=${JSON.stringify(tipo_plaga)}`);
+      assert.equal(res.status, 400, `tipo_plaga=${JSON.stringify(tipo_plaga)} deberia rechazarse`);
       const { error } = await res.json();
-      assert.match(error, /plaga/i);
       // Lo que no puede salir: nombres de constraints ni jerga de la base.
       assert.doesNotMatch(error, /constraint|check|violates|servicios_/i);
-    }
-    for (const tipo_plaga of ['insectos', 'roedores', 'mixto']) {
-      assert.equal((await contratar(base, e.sesion, { metros: 50, tipo_servicio: 'fumigacion', tipo_plaga })).status, 201, tipo_plaga);
     }
   });
 });

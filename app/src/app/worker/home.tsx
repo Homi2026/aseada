@@ -6,6 +6,7 @@ import { exigirSesion, obtenerSesion, guardarSesion, cerrarSesion, volverAlLogin
 import { avisar, confirmar } from '../../constants/dialogos';
 import { registrarNotificaciones } from '../../constants/notifications';
 import { EstadoError } from '../../components/estado-error';
+import { Avisos } from '../../components/avisos';
 
 // Mismo texto que responde el servidor cuando la cuenta todavia no esta activa.
 const MENSAJE_REVISION = 'Tu cuenta todavía está en revisión. Te avisamos cuando quede activada.';
@@ -344,6 +345,8 @@ export default function HomeWorker() {
   return (
     <View style={styles.container}>
       {encabezado}
+
+      <Avisos color="#1f6b4f" />
 
       <Text style={styles.seccion}>Solicitudes disponibles ({avisos})</Text>
 

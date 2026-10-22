@@ -5,6 +5,7 @@ import { api, esSesionVencida } from '../constants/api';
 import { cerrarSesion, exigirSesion, volverAlLogin } from '../constants/auth';
 import { avisar, confirmar } from '../constants/dialogos';
 import { EstadoError } from '../components/estado-error';
+import { Avisos } from '../components/avisos';
 
 const pesos = (n: any) => '$' + Number(n || 0).toLocaleString('es-CL');
 const fecha = (f: string) => new Date(f).toLocaleString('es-CL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -127,6 +128,8 @@ export default function Admin() {
         <Text style={styles.title}>Administración</Text>
         <TouchableOpacity onPress={salir}><Text style={styles.salir}>Salir</Text></TouchableOpacity>
       </View>
+
+      <Avisos color="#1f6b4f" />
 
       <Text style={styles.seccion}>Aseadores por activar · {porActivar.length}</Text>
       <Text style={styles.ayuda}>

@@ -1268,9 +1268,21 @@ app.get('/api/calificaciones', verificarToken, async (req, res) => {
   } catch(e) { fallo(res, e, 'listar las calificaciones'); }
 });
 
+// En web no hay push: esta lista es la unica forma de que el cliente, el
+// aseador o el admin se enteren de un aviso (pago recibido, nadie llego,
+// reembolso sin confirmar). La pantalla de inicio de cada rol la muestra.
 app.get('/api/notificaciones', verificarToken, async (req, res) => {
-  try { const r = await pool.query('SELECT * FROM notificaciones WHERE usuario_id=$1 ORDER BY id DESC', [req.usuario.id]); res.json(r.rows); }
-  catch(e) { fallo(res, e, 'listar las notificaciones'); }
+  try {
+    const r = await pool.query('SELECT * FROM notificaciones WHERE usuario_id=$1 ORDER BY id DESC LIMIT 30', [req.usuario.id]);
+    res.json(r.rows);
+  } catch(e) { fallo(res, e, 'listar las notificaciones'); }
+});
+
+app.post('/api/notificaciones/leidas', verificarToken, async (req, res) => {
+  try {
+    const r = await pool.query('UPDATE notificaciones SET leida=true WHERE usuario_id=$1 AND leida=false', [req.usuario.id]);
+    res.json({ marcadas: r.rowCount });
+  } catch(e) { fallo(res, e, 'marcar las notificaciones como leidas'); }
 });
 
 // El aseador declara bajo que modalidad presta el servicio. Hoy la unica

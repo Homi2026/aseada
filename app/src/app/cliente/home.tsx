@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { obtenerSesion, cerrarSesion, volverAlLogin } from '../../constants/auth';
+import { Avisos } from '../../components/avisos';
 
 export default function HomeCliente() {
   const [usuario, setUsuario] = useState<any>(null);
@@ -29,6 +30,8 @@ export default function HomeCliente() {
         </TouchableOpacity>
       </View>
 
+      {usuario && <Avisos />}
+
       <View style={styles.centro}>
         <Text style={styles.titulo}>¿Necesitas aseo?</Text>
         <Text style={styles.subtitulo}>Aseadores profesionales cerca de ti</Text>
@@ -43,6 +46,10 @@ export default function HomeCliente() {
         <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/cliente/historial')}>
           <Text style={styles.menuIcono}>📋</Text>
           <Text style={styles.menuTexto}>Historial</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/cliente/plan')}>
+          <Text style={styles.menuIcono}>📅</Text>
+          <Text style={styles.menuTexto}>Plan semanal</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/cliente/perfil')}>
           <Text style={styles.menuIcono}>👤</Text>

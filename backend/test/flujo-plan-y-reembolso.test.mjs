@@ -70,6 +70,13 @@ const post = (base, ruta, cuerpo, token) => fetch(base + ruta, {
   body: JSON.stringify(cuerpo)
 });
 
+// La ruta rechaza una primera visita en el pasado, asi que la fecha se calcula
+// desde hoy: una fecha fija deja de servir apenas pasa.
+const diaEnChile = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/Santiago' });
+const DIA_MS = 24 * 60 * 60 * 1000;
+const INICIO = diaEnChile(Date.now() + 5 * DIA_MS);
+const VISITAS_ESPERADAS = [0, 7, 14, 21].map((d) => diaEnChile(Date.parse(`${INICIO}T12:00:00Z`) + d * DIA_MS));
+
 test('un plan: cotiza, cobra en Flow, crea las 4 visitas programadas y no duplica al confirmar dos veces', async () => {
   const e = await escenario();
   await conServidor(async (base) => {
@@ -78,7 +85,7 @@ test('un plan: cotiza, cobra en Flow, crea las 4 visitas programadas y no duplic
     assert.equal((await cotizacion.json()).total, 147800);
 
     const compra = await post(base, '/api/planes', {
-      tipo: 'mensual', metros: 50, con_materiales: false, direccion: 'Calle 1', fecha_inicio: '2026-10-20'
+      tipo: 'mensual', metros: 50, con_materiales: false, direccion: 'Calle 1', fecha_inicio: INICIO
     }, e.tokenCliente);
     assert.equal(compra.status, 200);
     const cobro = await compra.json();
@@ -101,7 +108,7 @@ test('un plan: cotiza, cobra en Flow, crea las 4 visitas programadas y no duplic
        FROM servicios WHERE plan_id IS NOT NULL ORDER BY numero_visita`);
     assert.equal(visitas.length, 4, 'confirmar dos veces no crea visitas de mas');
     assert.deepEqual(visitas.map((v) => v.estado), ['programado', 'programado', 'programado', 'programado']);
-    assert.deepEqual(visitas.map((v) => v.dia), ['2026-10-20', '2026-10-27', '2026-11-03', '2026-11-10']);
+    assert.deepEqual(visitas.map((v) => v.dia), VISITAS_ESPERADAS);
 
     const { rows: [pagos] } = await e.db.query(
       "SELECT COUNT(*)::int AS n, SUM(monto_total)::int AS monto, SUM(flow_comision)::int AS fee FROM pagos WHERE servicio_id IN (SELECT id FROM servicios WHERE plan_id IS NOT NULL)");
@@ -114,7 +121,7 @@ test('un plan: cotiza, cobra en Flow, crea las 4 visitas programadas y no duplic
 test('una visita de plan que no llego se reembolsa por la API de Flow, y el aviso de Flow queda registrado', async () => {
   const e = await escenario();
   await conServidor(async (base) => {
-    await post(base, '/api/planes', { tipo: 'mensual', metros: 50, con_materiales: false, direccion: 'Calle 1', fecha_inicio: '2026-10-20' }, e.tokenCliente);
+    await post(base, '/api/planes', { tipo: 'mensual', metros: 50, con_materiales: false, direccion: 'Calle 1', fecha_inicio: INICIO }, e.tokenCliente);
     await post(base, '/pagos/flow/plan/confirmacion', { token: 'tok-plan-1' });
     const { rows: [visita] } = await e.db.query(
       "SELECT id FROM servicios WHERE plan_id IS NOT NULL ORDER BY numero_visita LIMIT 1");

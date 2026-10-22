@@ -1024,7 +1024,7 @@ app.post('/pagos/flow/confirmacion', exigirFlow, async (req, res) => {
           `Recibimos dos pagos del servicio #${duplicado.servicio_id}. Te devolvemos ${pesos(duplicado.monto_total)}; Flow procesa la devolución en los próximos días.`,
           { servicio_id: duplicado.servicio_id });
       } else if (pago) {
-        await pool.query("UPDATE servicios SET estado='buscando_worker' WHERE id=$1 AND estado='pendiente_pago'", [pago.servicio_id]);
+        await pool.query("UPDATE servicios SET estado='buscando_worker', buscando_desde=NOW() WHERE id=$1 AND estado='pendiente_pago'", [pago.servicio_id]);
         await notificar(pago.cliente_id, 'pago_recibido', 'Recibimos tu pago',
           `Tu pago de ${pesos(pago.monto_total)} quedó retenido por Aseada. El trabajador solo lo recibe cuando confirmes que el servicio se hizo; si no se realiza o hay un problema, te devolvemos el dinero.`,
           { servicio_id: pago.servicio_id });
@@ -1114,7 +1114,16 @@ async function procesoDiario() {
       `Flow todavía no informa la devolución de ${pesos(pago.monto_total)}. Revisa el panel de Flow y, si hace falta, contacta al cliente.`,
       { servicio_id: pago.servicio_id });
   }
-  return { liberados: liberados.length, disponibles: disponibles.length, no_llegaron: noLlegaron.length, publicadas: publicadas.length, reembolsos_sin_confirmar: sinConfirmar.length };
+  const sinAseador = await pagosTrabajador.serviciosSinAseador(pool);
+  for (const servicio of sinAseador) {
+    await notificar(await idsAdmins(), 'sin_aseador', `Servicio #${servicio.id} sin aseador`,
+      `Lleva más de ${pagosTrabajador.HORAS_SIN_ASEADOR} horas en la bolsa sin que nadie lo acepte (${servicio.metros} m², ${pesos(servicio.total_cliente)}). Contacta aseadores o al cliente.`,
+      { servicio_id: servicio.id });
+    await notificar(servicio.cliente_id, 'sin_aseador', 'Seguimos buscando aseador',
+      `Todavía no hay un aseador confirmado para tu servicio #${servicio.id}. Tu pago sigue retenido. Si prefieres no esperar, repórtalo desde tu historial y te devolvemos el dinero.`,
+      { servicio_id: servicio.id });
+  }
+  return { liberados: liberados.length, disponibles: disponibles.length, no_llegaron: noLlegaron.length, publicadas: publicadas.length, reembolsos_sin_confirmar: sinConfirmar.length, sin_aseador: sinAseador.length };
 }
 
 app.get('/api/cron/diario', async (req, res) => {

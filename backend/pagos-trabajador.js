@@ -264,10 +264,11 @@ async function reagendarPorNoLlegada(db, servicioId, clienteId, { cuando, ahora 
        workers_excluidos = CASE WHEN worker_id IS NULL THEN workers_excluidos ELSE array_append(workers_excluidos, worker_id) END,
        worker_id=NULL, aceptado_en=NULL, llegada_en=NULL,
        fecha_servicio=$2,
-       reclamo_en=NULL, reclamo_motivo=NULL, reclamo_detalle=NULL
+       reclamo_en=NULL, reclamo_motivo=NULL, reclamo_detalle=NULL,
+       buscando_desde=$3, sin_aseador_alerta_en=NULL
      WHERE id=$1 AND estado='en_reclamo' AND reclamo_motivo='no_llego'
      RETURNING *`,
-    [servicioId, fecha]);
+    [servicioId, fecha, ahora]);
   if (!servicio) return { error: 'No se pudo reagendar', status: 409 };
   return { servicio };
 }
@@ -417,7 +418,7 @@ async function activarPlan(db, flowToken, flowData = {}, { calcularVisita, ahora
 /** Publica las visitas programadas cuyo dia ya llego (dia en Chile). */
 async function promoverVisitasDelDia(db, { ahora = new Date() } = {}) {
   const { rows } = await db.query(
-    `UPDATE servicios SET estado='buscando_worker'
+    `UPDATE servicios SET estado='buscando_worker', buscando_desde=$1, sin_aseador_alerta_en=NULL
      WHERE estado='programado'
        AND (fecha_servicio AT TIME ZONE 'America/Santiago')::date <= ($1::timestamptz AT TIME ZONE 'America/Santiago')::date
      RETURNING *`, [ahora]);
@@ -440,7 +441,30 @@ async function reembolsosSinConfirmar(db, { ahora = new Date(), horas = 72 } = {
   return rows;
 }
 
+// Horas que un servicio puede pasar en la bolsa, contadas desde que llego su
+// dia preferido (o desde que entro a la bolsa, lo que sea mas tarde), antes de
+// avisar que nadie lo tomo.
+const HORAS_SIN_ASEADOR = 4;
+
+/**
+ * Servicios pagados que siguen sin aseador pasado el plazo. Se marcan al
+ * devolverlos: el aviso sale una vez por cada busqueda, y un reagendamiento
+ * o una visita recien publicada arranca una busqueda nueva.
+ */
+async function serviciosSinAseador(db, { ahora = new Date(), horas = HORAS_SIN_ASEADOR } = {}) {
+  const limite = new Date(ahora.getTime() - horas * HORA_MS);
+  const { rows } = await db.query(
+    `UPDATE servicios SET sin_aseador_alerta_en=$2
+     WHERE estado='buscando_worker' AND sin_aseador_alerta_en IS NULL AND buscando_desde IS NOT NULL
+       AND GREATEST(buscando_desde,
+             COALESCE(((fecha_servicio AT TIME ZONE 'America/Santiago')::date)::timestamp AT TIME ZONE 'America/Santiago', buscando_desde)
+           ) <= $1
+     RETURNING *`, [limite, ahora]);
+  return rows;
+}
+
 module.exports = {
+  HORAS_SIN_ASEADOR, serviciosSinAseador,
   VISITAS_POR_PLAN, comisionParaPrecio, precioVisitaPlan, activarPlan, promoverVisitasDelDia, reembolsosSinConfirmar,
   HORAS_REVISION, MOTIVOS_RECLAMO, HORAS_TOLERANCIA_LLEGADA,
   enTransaccion, tasaRetencion, calcularLiquidacion, registrarDatosFlow,

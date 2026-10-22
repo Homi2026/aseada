@@ -1456,8 +1456,32 @@ module.exports.correrProcesoPeriodico = correrProcesoPeriodico;
 //
 // El esquema ya no se toca al arrancar: las migraciones se aplican aparte con
 // `npm run migrate`, que lleva registro de lo aplicado en _migraciones.
+// Las migraciones se aplican al arrancar, antes de atender: antes se corrian a
+// mano por SSH, y si el codigo nuevo llegaba primero, las rutas que usan
+// columnas nuevas fallaban (por ejemplo, la confirmacion de un pago). Si una
+// falla, el servidor arranca igual: /health la muestra pendiente y lo que no
+// depende de ella sigue andando, en vez de dejar el sitio caido.
+async function migrarAlArrancar(base = pool, log = console.log) {
+  let db;
+  try {
+    const { migrar } = await import('./scripts/migrar.mjs');
+    db = typeof base.connect === 'function' ? await base.connect() : base;
+    const aplicadas = await migrar(db, () => {});
+    if (aplicadas.length) log(`[aseada] migraciones aplicadas al arrancar: ${aplicadas.join(', ')}`);
+    return aplicadas;
+  } catch (error) {
+    console.error('[aseada] no se pudieron aplicar las migraciones al arrancar:', error.message);
+    return null;
+  } finally {
+    if (db && db !== base && typeof db.release === 'function') db.release();
+  }
+}
+module.exports.migrarAlArrancar = migrarAlArrancar;
+
 if (require.main === module) {
-  app.listen(PORT, '0.0.0.0', () => console.log('Aseada v3.0 PostgreSQL + Flow corriendo en puerto ' + PORT));
+  migrarAlArrancar().finally(() => {
+    app.listen(PORT, '0.0.0.0', () => console.log('Aseada v3.0 PostgreSQL + Flow corriendo en puerto ' + PORT));
+  });
   // Primera corrida a los 30 s (tiempo de sobra para que el pool a Postgres
   // este listo), despues cada INTERVALO_PROCESO_MIN minutos. unref() para que
   // el temporizador no le impida al proceso cerrar limpio si hace falta.

@@ -1196,6 +1196,41 @@ app.post('/api/admin/workers/:id/activar', verificarToken, exigirRol('admin'), a
   } catch(e) { fallo(res, e, 'activar o desactivar al aseador'); }
 });
 
+// Recuperar la contrasena sin un servicio de correo: el usuario escribe a
+// soporte, el admin genera una clave temporal y se la entrega, y el usuario
+// la cambia desde su perfil. La clave se muestra una sola vez, en esta
+// respuesta; en la base queda solo su hash.
+app.post('/api/admin/usuarios/restablecer-clave', verificarToken, exigirRol('admin'), async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: 'Falta el email de la cuenta' });
+    // Sin 0/O ni 1/l/I: se dicta o se copia a mano por WhatsApp.
+    const alfabeto = 'abcdefghjkmnpqrstuvwxyz23456789';
+    const clave = Array.from(crypto.randomBytes(10), (b) => alfabeto[b % alfabeto.length]).join('');
+    const { rows: [u] } = await pool.query(
+      'UPDATE usuarios SET password=$2 WHERE LOWER(email)=$1 RETURNING id, nombre, email',
+      [email, await bcrypt.hash(clave, 10)]);
+    if (!u) return res.status(404).json({ error: 'No existe una cuenta con ese email' });
+    res.json({ nombre: u.nombre, email: u.email, clave_temporal: clave });
+  } catch(e) { fallo(res, e, 'restablecer la contraseña'); }
+});
+
+app.post('/api/usuarios/cambiar-clave', verificarToken, async (req, res) => {
+  try {
+    const { actual, nueva } = req.body || {};
+    if (!actual || !nueva) return res.status(400).json({ error: 'Escribe tu contraseña actual y la nueva' });
+    if (String(nueva).length < LARGO_MINIMO_PASSWORD) {
+      return res.status(400).json({ error: `La contraseña nueva debe tener al menos ${LARGO_MINIMO_PASSWORD} caracteres.` });
+    }
+    const { rows: [u] } = await pool.query('SELECT password FROM usuarios WHERE id=$1', [req.usuario.id]);
+    if (!u || !(await bcrypt.compare(String(actual), u.password))) {
+      return res.status(400).json({ error: 'La contraseña actual no es correcta' });
+    }
+    await pool.query('UPDATE usuarios SET password=$2 WHERE id=$1', [req.usuario.id, await bcrypt.hash(String(nueva), 10)]);
+    res.json({ mensaje: 'Listo, cambiamos tu contraseña.' });
+  } catch(e) { fallo(res, e, 'cambiar la contraseña'); }
+});
+
 app.get('/api/admin/transferencias', verificarToken, exigirRol('admin'), async (req, res) => {
   try {
     await procesoDiario();

@@ -21,6 +21,25 @@ export default function Admin() {
   const [errorCarga, setErrorCarga] = useState('');
   const [errorWorkers, setErrorWorkers] = useState('');
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [emailClave, setEmailClave] = useState('');
+  const [claveTemporal, setClaveTemporal] = useState<{ email: string; clave: string } | null>(null);
+
+  const restablecerClave = async () => {
+    if (!emailClave.trim()) return avisar('Falta el email', 'Escribe el email de la cuenta.');
+    const ok = await confirmar('¿Generar clave temporal?', `La contraseña actual de ${emailClave.trim()} deja de servir.`, 'Generar');
+    if (!ok) return;
+    setOcupado('clave');
+    try {
+      const { token } = await exigirSesion();
+      const res = await api.post('/api/admin/usuarios/restablecer-clave', { email: emailClave.trim() }, token);
+      setClaveTemporal({ email: res.email, clave: res.clave_temporal });
+    } catch (e: any) {
+      if (esSesionVencida(e)) return volverAlLogin();
+      avisar('No se pudo restablecer', e?.message || 'Intenta nuevamente.');
+    } finally {
+      setOcupado(null);
+    }
+  };
 
   const cargar = useCallback(async () => {
     try {
@@ -227,6 +246,21 @@ export default function Admin() {
           </View>
         </View>
       ))}
+
+      <Text style={styles.seccion}>Restablecer contraseña</Text>
+      <Text style={styles.ayuda}>
+        Cuando alguien escribe a soporte porque olvidó su contraseña: verifica que el correo venga de la misma cuenta,
+        genera una clave temporal y envíasela. La puede cambiar desde su perfil.
+      </Text>
+      <View style={styles.card}>
+        <TextInput style={styles.input} placeholder="Email de la cuenta" value={emailClave} onChangeText={setEmailClave} autoCapitalize="none" keyboardType="email-address" />
+        <TouchableOpacity style={styles.btn} onPress={restablecerClave} disabled={ocupado === 'clave'}>
+          <Text style={styles.btnTexto}>Generar clave temporal</Text>
+        </TouchableOpacity>
+        {!!claveTemporal && (
+          <Text selectable style={styles.detalle}>Clave temporal de {claveTemporal.email}: {claveTemporal.clave}</Text>
+        )}
+      </View>
     </ScrollView>
   );
 }

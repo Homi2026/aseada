@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { api } from '../../constants/api';
 import { obtenerSesion } from '../../constants/auth';
 import { avisar } from '../../constants/dialogos';
+import { CambiarClave } from '../../components/cambiar-clave';
 
 const TIPOS_CUENTA = [
   { id: 'vista', texto: 'Cuenta vista / RUT' },
@@ -76,6 +77,9 @@ export default function PerfilWorker() {
       <TouchableOpacity style={[styles.button, !acepta && styles.disabled]} onPress={guardar} disabled={!acepta || loading}>
         <Text style={styles.buttonText}>{loading ? 'Guardando...' : 'Guardar perfil profesional'}</Text>
       </TouchableOpacity>
+      <View style={{ marginTop: 24 }}>
+        <CambiarClave color="#1f6b4f" />
+      </View>
     </ScrollView>
   );
 }

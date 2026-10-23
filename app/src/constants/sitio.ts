@@ -5,5 +5,8 @@
  */
 export const TITULO_SITIO = 'Aseada · Aseo del hogar y fumigación en Chile';
 
+/** A donde escriben clientes y aseadores: contraseña olvidada, dudas, reclamos. */
+export const SOPORTE_EMAIL = 'soporteaseada@gmail.com';
+
 export const DESCRIPCION_SITIO =
   'Agenda aseo del hogar o fumigación con aseadores de confianza. Sabes el precio antes de solicitar y tu pago queda retenido hasta que confirmas que el servicio quedó bien.';

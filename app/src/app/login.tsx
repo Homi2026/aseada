@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
+import { SOPORTE_EMAIL } from '../constants/sitio';
 import { api } from '../constants/api';
 import { guardarSesion } from '../constants/auth';
 import { avisar } from '../constants/dialogos';
@@ -46,6 +47,9 @@ export default function Login() {
         </TouchableOpacity>
         <TouchableOpacity onPress={() => router.push('/registro')}>
           <Text style={styles.link}>Crear una cuenta nueva</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => Linking.openURL(`mailto:${SOPORTE_EMAIL}?subject=${encodeURIComponent('Olvidé mi contraseña')}&body=${encodeURIComponent('Hola, olvidé mi contraseña. Mi cuenta es: ' + (email || ''))}`)}>
+          <Text style={styles.link}>¿Olvidaste tu contraseña? Escríbenos a {SOPORTE_EMAIL}</Text>
         </TouchableOpacity>
       </View>
     </View>

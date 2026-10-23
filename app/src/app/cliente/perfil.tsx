@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { avisar } from '../../constants/dialogos';
 import { router } from 'expo-router';
+import { CambiarClave } from '../../components/cambiar-clave';
 import { cerrarSesion, obtenerSesion, volverAlLogin } from '../../constants/auth';
 
 export default function PerfilCliente() {
@@ -36,9 +36,7 @@ export default function PerfilCliente() {
         <Text style={styles.value}>{usuario?.rol === 'worker' ? 'Aseador' : 'Cliente'}</Text>
       </View>
 
-      <TouchableOpacity style={styles.button} onPress={() => avisar('Perfil', 'La edición de perfil estará disponible pronto.')}>
-        <Text style={styles.buttonText}>Editar perfil</Text>
-      </TouchableOpacity>
+      <CambiarClave />
 
       <TouchableOpacity style={styles.buttonSecondary} onPress={salir}>
         <Text style={styles.buttonSecondaryText}>Cerrar sesión</Text>

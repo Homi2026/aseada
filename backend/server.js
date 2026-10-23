@@ -720,6 +720,11 @@ app.post('/api/planes', verificarToken, exigirRol('cliente'), exigirFlow, async 
     const hoy = diaEnChile(new Date());
     const inicio = fecha_inicio || diaEnChile(new Date(Date.now() + 24 * 60 * 60 * 1000));
     if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || inicio < hoy) return res.status(400).json({ error: 'La primera visita debe ser una fecha de hoy en adelante' });
+    // Tope de 60 dias: sin el, un plan podia empezar en 2099 y dejar el pago
+    // retenido por años.
+    if (inicio > diaEnChile(new Date(Date.now() + 60 * 24 * 60 * 60 * 1000))) {
+      return res.status(400).json({ error: 'La primera visita tiene que ser dentro de los próximos 60 días' });
+    }
 
     // Mismo criterio que /api/pagos/crear: tocar "Pagar" dos veces no debe
     // crear dos cobros del mismo plan.
@@ -783,7 +788,7 @@ app.get('/api/servicios', verificarToken, async (req, res) => {
     // worker: esta misma pantalla es su historial y dejarlo sin historial no
     // protege nada.
     const query = await aseadorEstaActivo(req.usuario.id)
-      ? "SELECT * FROM servicios WHERE estado = 'buscando_worker' OR worker_id=$1 ORDER BY id DESC"
+      ? "SELECT * FROM servicios WHERE (estado = 'buscando_worker' AND NOT ($1 = ANY(workers_excluidos))) OR worker_id=$1 ORDER BY id DESC"
       : 'SELECT * FROM servicios WHERE worker_id=$1 ORDER BY id DESC';
     const r = await pool.query(query, [req.usuario.id]);
     res.json(ocultarDireccionAjena(r.rows, req.usuario.id));
@@ -813,12 +818,16 @@ app.put('/api/servicios/:id/completar', verificarToken, async (req, res) => {
     // es la condicion previa para que se libere el pago.
     if (s.worker_id !== req.usuario.id) return res.status(403).json({ error: 'Solo el aseador asignado puede completar este servicio' });
     if (s.estado !== 'en_proceso') return res.status(400).json({ error: 'El servicio no está en proceso' });
+    // Sin "llegue" no hay "termine": la app ya esconde el boton, pero llamando
+    // a la API directo un aseador que nunca fue se saltaba la deteccion de
+    // no-llegada y su pago se liberaba solo a las 24 h si nadie reclamaba.
+    if (!s.llegada_en) return res.status(400).json({ error: 'Primero marca que llegaste al lugar' });
     // La condicion del SELECT se repite al escribir. Entre uno y otro el
     // cliente puede apretar "Reportar problema": sin esa condicion el UPDATE
     // pisa el 'en_reclamo', el reclamo desaparece de la lista del admin y a
     // las 24 h se le libera el pago al trabajador igual.
     const { rows: [terminado] } = await pool.query(
-      "UPDATE servicios SET estado='completado', completado_en=NOW() WHERE id=$1 AND worker_id=$2 AND estado='en_proceso' RETURNING id",
+      "UPDATE servicios SET estado='completado', completado_en=NOW() WHERE id=$1 AND worker_id=$2 AND estado='en_proceso' AND llegada_en IS NOT NULL RETURNING id",
       [req.params.id, req.usuario.id]);
     if (!terminado) return res.status(409).json({ error: 'El servicio ya no está en proceso; puede que el cliente haya reportado un problema.' });
     // Avisar despues de comprobar que la fila se escribio: si no se escribio,
@@ -884,12 +893,11 @@ app.post('/api/servicios/:id/reagendar', verificarToken, exigirRol('cliente'), a
 // marco su llegada. El reembolso se inicia solo contra la API de Flow.
 app.post('/api/servicios/:id/pedir-reembolso', verificarToken, exigirRol('cliente'), exigirFlow, async (req, res) => {
   try {
-    const { rows: [s] } = await pool.query(
-      'SELECT cliente_id, estado, reclamo_motivo FROM servicios WHERE id=$1', [req.params.id]);
+    const { rows: [s] } = await pool.query('SELECT * FROM servicios WHERE id=$1', [req.params.id]);
     if (!s) return res.status(404).json({ error: 'Servicio no encontrado' });
     if (s.cliente_id !== req.usuario.id) return res.status(403).json({ error: 'Solo el cliente del servicio puede pedir el reembolso' });
-    if (s.estado !== 'en_reclamo' || s.reclamo_motivo !== 'no_llego') {
-      return res.status(400).json({ error: 'Este servicio no está esperando una decisión por falta de aseador' });
+    if (!pagosTrabajador.noLlegadaComprobada(s)) {
+      return res.status(400).json({ error: 'Este reclamo lo revisa un administrador antes de devolver el dinero. Te contactaremos.' });
     }
     const r = await pagosTrabajador.enTransaccion(pool, (db) =>
       pagosTrabajador.resolverReclamo(db, Number(req.params.id), 'reembolsar', { aseadaRetiene: ASEADA_RETIENE_HONORARIOS }));
@@ -1228,7 +1236,9 @@ app.post('/api/admin/usuarios/restablecer-clave', verificarToken, exigirRol('adm
   } catch(e) { fallo(res, e, 'restablecer la contraseña'); }
 });
 
-app.post('/api/usuarios/cambiar-clave', verificarToken, async (req, res) => {
+// Con limite de intentos: con una sesion robada no se puede adivinar la
+// contraseña actual a fuerza de probar.
+app.post('/api/usuarios/cambiar-clave', limitarIntentos, verificarToken, async (req, res) => {
   try {
     const { actual, nueva } = req.body || {};
     if (!actual || !nueva) return res.status(400).json({ error: 'Escribe tu contraseña actual y la nueva' });

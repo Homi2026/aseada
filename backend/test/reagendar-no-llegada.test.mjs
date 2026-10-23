@@ -26,9 +26,9 @@ async function escenario({ motivo = 'no_llego' } = {}) {
   const otroCliente = await nuevo('c2@t.cl', 'cliente');
   const worker = await nuevo('w@t.cl', 'worker');
   const { rows: [s] } = await db.query(
-    `INSERT INTO servicios(cliente_id,worker_id,direccion,metros,precio_base,subtotal,comision,iva,total_cliente,worker_recibe,estado,reclamo_en,reclamo_motivo)
-     VALUES($1,$2,'Calle 1',50,28000,28000,10076,1914,39990,28000,'en_reclamo',$3,$4) RETURNING id`,
-    [cliente, worker, AHORA, motivo]);
+    `INSERT INTO servicios(cliente_id,worker_id,direccion,metros,precio_base,subtotal,comision,iva,total_cliente,worker_recibe,estado,reclamo_en,reclamo_motivo,aceptado_en)
+     VALUES($1,$2,'Calle 1',50,28000,28000,10076,1914,39990,28000,'en_reclamo',$3,$4,$5) RETURNING id`,
+    [cliente, worker, AHORA, motivo, new Date(AHORA.getTime() - 3 * 60 * 60 * 1000)]);
   return { db, cliente, otroCliente, worker, servicio: s.id };
 }
 
@@ -89,8 +89,22 @@ test('tras reagendar dos veces, workers_excluidos acumula a ambos aseadores', as
   const otroWorker = (await e.db.query(
     "INSERT INTO usuarios(nombre,email,password,rol) VALUES($1,$2,$3,$4) RETURNING id", ['w2@t.cl', 'w2@t.cl', 'h', 'worker'])).rows[0].id;
   await e.db.query(
-    "UPDATE servicios SET estado='en_reclamo', worker_id=$2, reclamo_motivo='no_llego' WHERE id=$1",
-    [e.servicio, otroWorker]);
+    "UPDATE servicios SET estado='en_reclamo', worker_id=$2, reclamo_motivo='no_llego', aceptado_en=$3 WHERE id=$1",
+    [e.servicio, otroWorker, new Date(AHORA.getTime() - 3 * 60 * 60 * 1000)]);
   const r2 = await P.reagendarPorNoLlegada(e.db, e.servicio, e.cliente, { cuando: 'hoy', ahora: AHORA });
   assert.deepEqual(r2.servicio.workers_excluidos, [e.worker, otroWorker]);
+});
+
+test('no se reagenda solo si el aseador si marco que llego: lo revisa un admin', async () => {
+  const e = await escenario();
+  await e.db.query('UPDATE servicios SET llegada_en=$2 WHERE id=$1', [e.servicio, AHORA]);
+  const r = await P.reagendarPorNoLlegada(e.db, e.servicio, e.cliente, { cuando: 'hoy', ahora: AHORA });
+  assert.equal(r.status, 400);
+});
+
+test('no se reagenda solo antes de que pasen las 2 horas de tolerancia', async () => {
+  const e = await escenario();
+  await e.db.query('UPDATE servicios SET aceptado_en=$2 WHERE id=$1', [e.servicio, new Date(AHORA.getTime() - 30 * 60 * 1000)]);
+  const r = await P.reagendarPorNoLlegada(e.db, e.servicio, e.cliente, { cuando: 'hoy', ahora: AHORA });
+  assert.equal(r.status, 400);
 });

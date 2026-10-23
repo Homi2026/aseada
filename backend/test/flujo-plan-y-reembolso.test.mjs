@@ -126,7 +126,7 @@ test('una visita de plan que no llego se reembolsa por la API de Flow, y el avis
     const { rows: [visita] } = await e.db.query(
       "SELECT id FROM servicios WHERE plan_id IS NOT NULL ORDER BY numero_visita LIMIT 1");
     await e.db.query(
-      "UPDATE servicios SET estado='en_reclamo', worker_id=$2, reclamo_motivo='no_llego', reclamo_en=NOW() WHERE id=$1",
+      "UPDATE servicios SET estado='en_reclamo', worker_id=$2, reclamo_motivo='no_llego', reclamo_en=NOW(), aceptado_en=NOW() - INTERVAL '3 hours' WHERE id=$1",
       [visita.id, e.worker]);
 
     const reembolso = await post(base, `/api/servicios/${visita.id}/pedir-reembolso`, {}, e.tokenCliente);

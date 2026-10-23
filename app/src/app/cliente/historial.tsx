@@ -7,6 +7,11 @@ import { avisar, confirmar } from '../../constants/dialogos';
 import { EstadoError } from '../../components/estado-error';
 import { estadoCliente, GARANTIA, MOTIVOS_RECLAMO, irAPagar } from '../../constants/pagos';
 
+// Reagendar o pedir la devolucion solo aplica si el aseador nunca marco su
+// llegada (el servidor revisa ademas el plazo de 2 horas). Si llego, el
+// reclamo lo revisa un administrador.
+const sinLlegada = (s: any) => s.reclamo_motivo === 'no_llego' && !s.llegada_en && !s.completado_en;
+
 // Mientras el pago no se libera, el cliente puede reportar un problema.
 const RECLAMABLES = ['buscando_worker', 'en_proceso', 'completado'];
 
@@ -167,7 +172,7 @@ export default function HistorialCliente() {
                   </>
                 )}
 
-                {item.estado === 'en_reclamo' && item.reclamo_motivo === 'no_llego' && (
+                {item.estado === 'en_reclamo' && sinLlegada(item) && (
                   <View style={styles.reagendo}>
                     <Text style={styles.nota}>El aseador no llegó. Tu pago sigue retenido. ¿Qué prefieres?</Text>
                     <TouchableOpacity style={styles.btnPrincipal} onPress={() => reagendar(item.id, 'hoy')} disabled={cargando}>
@@ -182,7 +187,7 @@ export default function HistorialCliente() {
                   </View>
                 )}
 
-                {item.estado === 'en_reclamo' && item.reclamo_motivo !== 'no_llego' && (
+                {item.estado === 'en_reclamo' && !sinLlegada(item) && (
                   <Text style={styles.nota}>Estamos revisando tu reclamo. Tu pago sigue retenido y no se le libera al trabajador hasta resolverlo.</Text>
                 )}
 

@@ -133,6 +133,7 @@ test('un servicio todavia en la bolsa tampoco se puede reembolsar por error', as
 
 test('si el cliente reclama mientras el aseador termina, gana el reclamo', async () => {
   const e = await escenario({ estado: 'en_proceso' });
+  await e.db.query('UPDATE servicios SET llegada_en=NOW() WHERE id=$1', [e.servicio]);
   // El cliente aprieta "Reportar problema" justo despues de que la ruta leyo
   // el servicio y antes de que lo escriba.
   usarPool(conIntruso(e.db, (sql) => sql === 'SELECT * FROM servicios WHERE id=$1',

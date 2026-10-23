@@ -246,13 +246,27 @@ const CUANDO_REAGENDAR = ['hoy', 'manana'];
  * otro) son disputas que un admin tiene que revisar, no algo que el cliente
  * resuelva solo reagendando.
  */
+/**
+ * El cliente solo decide solo (reagendar o devolucion automatica) cuando el
+ * sistema puede comprobar que nadie llego: reclamo 'no_llego', el aseador nunca
+ * marco su llegada, y o no habia aseador o ya paso la ventana de tolerancia.
+ * Sin esto, un cliente reclamaba "no llego" sobre un servicio ya hecho y se
+ * devolvia la plata al instante. Cualquier otro caso lo revisa un admin.
+ */
+function noLlegadaComprobada(s, ahora = new Date()) {
+  if (s.estado !== 'en_reclamo' || s.reclamo_motivo !== 'no_llego' || s.llegada_en) return false;
+  if (s.completado_en) return false;
+  if (!s.worker_id) return true;
+  return Boolean(s.aceptado_en) && new Date(s.aceptado_en).getTime() <= ahora.getTime() - HORAS_TOLERANCIA_LLEGADA * HORA_MS;
+}
+
 async function reagendarPorNoLlegada(db, servicioId, clienteId, { cuando, ahora = new Date() } = {}) {
   if (!CUANDO_REAGENDAR.includes(cuando)) return { error: "'cuando' debe ser 'hoy' o 'manana'", status: 400 };
-  const { rows: [actual] } = await db.query('SELECT cliente_id, estado, reclamo_motivo FROM servicios WHERE id=$1', [servicioId]);
+  const { rows: [actual] } = await db.query('SELECT * FROM servicios WHERE id=$1', [servicioId]);
   if (!actual) return { error: 'Servicio no encontrado', status: 404 };
   if (actual.cliente_id !== clienteId) return { error: 'Solo el cliente del servicio puede reagendarlo', status: 403 };
-  if (actual.estado !== 'en_reclamo' || actual.reclamo_motivo !== 'no_llego') {
-    return { error: 'Este servicio no está esperando una decisión por falta de aseador', status: 400 };
+  if (!noLlegadaComprobada(actual, ahora)) {
+    return { error: 'Este reclamo lo revisa un administrador antes de reagendar o devolver.', status: 400 };
   }
   const fecha = new Date(ahora.getTime() + (cuando === 'manana' ? HORA_MS * 24 : 0));
   // array_append(workers_excluidos, worker_id) lee el worker_id de ANTES de
@@ -489,7 +503,7 @@ async function cancelarPlan(db, planId, { ahora = new Date() } = {}) {
 }
 
 module.exports = {
-  cancelarPlan,
+  cancelarPlan, noLlegadaComprobada,
   HORAS_SIN_ASEADOR, serviciosSinAseador,
   VISITAS_POR_PLAN, comisionParaPrecio, precioVisitaPlan, activarPlan, promoverVisitasDelDia, reembolsosSinConfirmar,
   HORAS_REVISION, MOTIVOS_RECLAMO, HORAS_TOLERANCIA_LLEGADA,

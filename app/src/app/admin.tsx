@@ -10,7 +10,13 @@ import { Avisos } from '../components/avisos';
 const pesos = (n: any) => '$' + Number(n || 0).toLocaleString('es-CL');
 const fecha = (f: string) => new Date(f).toLocaleString('es-CL', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const dia = (f: string) => (f ? new Date(f).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' }) : 'sin fecha');
-const MOTIVOS: Record<string, string> = { no_llego: 'No llegó nadie', incompleto: 'Trabajo incompleto', danio: 'Daño o pérdida', otro: 'Otro' };
+const ESTADOS_REEMBOLSO: Record<string, string> = {
+  created: 'esperando que el cliente confirme',
+  accepted: 'el cliente la aceptó, Flow la está procesando',
+  rejected: 'el cliente la rechazó: hay que contactarlo',
+  cancelled: 'anulada: hay que revisarla',
+};
+const MOTIVOS: Record<string, string> ={ no_llego: 'No llegó nadie', incompleto: 'Trabajo incompleto', danio: 'Daño o pérdida', otro: 'Otro' };
 
 export default function Admin() {
   const [transferencias, setTransferencias] = useState<any[]>([]);
@@ -22,6 +28,7 @@ export default function Admin() {
   const [errorWorkers, setErrorWorkers] = useState('');
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [planes, setPlanes] = useState<any[]>([]);
+  const [seguimiento, setSeguimiento] = useState<{ reembolsos: any[]; sin_aseador: any[] }>({ reembolsos: [], sin_aseador: [] });
   const [emailClave, setEmailClave] = useState('');
 
   const cancelarPlan = async (p: any) => {
@@ -77,8 +84,12 @@ export default function Admin() {
         setErrorWorkers(error?.message || 'No pudimos cargar los aseadores.');
       }
       try {
-        const p = await api.get('/api/admin/planes', token);
+        const [p, s] = await Promise.all([
+          api.get('/api/admin/planes', token),
+          api.get('/api/admin/seguimiento', token),
+        ]);
         setPlanes(Array.isArray(p) ? p : []);
+        setSeguimiento({ reembolsos: s?.reembolsos || [], sin_aseador: s?.sin_aseador || [] });
       } catch (error: any) {
         if (esSesionVencida(error)) return volverAlLogin();
         setPlanes([]);
@@ -264,6 +275,37 @@ export default function Admin() {
               <Text style={styles.btnTexto}>Devolver al cliente</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      ))}
+
+      <Text style={styles.seccion}>Devoluciones en curso · {seguimiento.reembolsos.length}</Text>
+      <Text style={styles.ayuda}>
+        Flow le pide al cliente confirmar la devolución por correo. Prometemos devolver en máximo 72 horas: si una se demora,
+        o Flow no la aceptó, revísala en el panel de Flow.
+      </Text>
+      {seguimiento.reembolsos.length === 0 && <Text style={styles.vacio}>Sin devoluciones pendientes.</Text>}
+      {seguimiento.reembolsos.map((r) => (
+        <View key={r.id} style={[styles.card, (r.manual || ['rejected', 'cancelled'].includes(r.estado_flow)) && styles.cardReclamo]}>
+          <Text style={styles.nombre}>{pesos(r.monto)} a {r.cliente_nombre} · servicio #{r.servicio_id}</Text>
+          <Text style={styles.detalle}>{r.cliente_email} · iniciada el {fecha(r.iniciado_en)}</Text>
+          <Text style={styles.detalle}>
+            {r.manual
+              ? `Sin reembolso automático: hazla a mano en el panel de Flow (orden ${r.flow_order || 'sin orden'}).`
+              : `Estado en Flow: ${ESTADOS_REEMBOLSO[r.estado_flow] || 'esperando que el cliente confirme'}`}
+          </Text>
+        </View>
+      ))}
+
+      <Text style={styles.seccion}>En la bolsa sin aseador · {seguimiento.sin_aseador.length}</Text>
+      {seguimiento.sin_aseador.length === 0 && <Text style={styles.vacio}>Ningún servicio esperando aseador.</Text>}
+      {seguimiento.sin_aseador.map((s) => (
+        <View key={s.id} style={[styles.card, s.alertado && styles.cardReclamo]}>
+          <Text style={styles.nombre}>Servicio #{s.id}{s.plan_id ? ` · plan #${s.plan_id}` : ''} · {s.metros} m² · {pesos(s.total_cliente)}</Text>
+          <Text style={styles.detalle}>{s.cliente_nombre} · {s.cliente_email}</Text>
+          <Text style={styles.detalle}>
+            Día pedido: {dia(s.fecha_servicio)} · en la bolsa desde {s.buscando_desde ? fecha(s.buscando_desde) : 'sin dato'}
+            {s.alertado ? ' · ya se avisó que nadie lo toma' : ''}
+          </Text>
         </View>
       ))}
 

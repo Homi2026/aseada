@@ -1244,6 +1244,33 @@ app.post('/api/usuarios/cambiar-clave', verificarToken, async (req, res) => {
   } catch(e) { fallo(res, e, 'cambiar la contraseña'); }
 });
 
+// Lo que el admin tiene que vigilar fuera de reclamos y transferencias:
+// devoluciones que Flow todavia no completa (o que no acepto y hay que hacer a
+// mano) y servicios pagados que siguen en la bolsa sin aseador.
+app.get('/api/admin/seguimiento', verificarToken, exigirRol('admin'), async (req, res) => {
+  try {
+    // Una devolucion por fila: un plan cancelado reparte un solo reembolso en
+    // varios pagos. Sin token = Flow no la acepto o la resolvio un admin a mano;
+    // se muestran 14 dias para que no quede ninguna olvidada.
+    const { rows: reembolsos } = await pool.query(
+      `SELECT COALESCE(p.flow_refund_token, 'manual-' || p.id) AS id, p.flow_refund_token IS NULL AS manual,
+              MIN(p.servicio_id) AS servicio_id, SUM(p.monto_total)::int AS monto, MIN(p.reembolsado_en) AS iniciado_en,
+              MAX(p.flow_refund_status) AS estado_flow, MAX(p.flow_order) AS flow_order,
+              MAX(c.nombre) AS cliente_nombre, MAX(c.email) AS cliente_email
+       FROM pagos p JOIN usuarios c ON c.id=p.cliente_id
+       WHERE p.estado='reembolsado' AND COALESCE(p.flow_refund_status, '') <> 'refunded'
+         AND (p.flow_refund_token IS NOT NULL OR p.reembolsado_en >= NOW() - INTERVAL '14 days')
+       GROUP BY COALESCE(p.flow_refund_token, 'manual-' || p.id), p.flow_refund_token IS NULL
+       ORDER BY MIN(p.reembolsado_en)`);
+    const { rows: sinAseador } = await pool.query(
+      `SELECT s.id, s.metros, s.total_cliente, s.fecha_servicio, s.buscando_desde, s.plan_id,
+              s.sin_aseador_alerta_en IS NOT NULL AS alertado, c.nombre AS cliente_nombre, c.email AS cliente_email
+       FROM servicios s JOIN usuarios c ON c.id=s.cliente_id
+       WHERE s.estado='buscando_worker' ORDER BY s.buscando_desde NULLS LAST`);
+    res.json({ reembolsos, sin_aseador: sinAseador });
+  } catch(e) { fallo(res, e, 'cargar el seguimiento'); }
+});
+
 // Planes activos con lo que queda por hacer: el admin los ve para poder
 // cancelar uno cuando el cliente lo pide por soporte.
 app.get('/api/admin/planes', verificarToken, exigirRol('admin'), async (req, res) => {

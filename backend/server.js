@@ -1045,17 +1045,23 @@ app.post('/pagos/flow/reembolso-confirmacion', exigirFlow, async (req, res) => {
   try {
     const { token } = req.body;
     const refundData = await flowGet('/refund/getStatus', { token });
-    const { rows: [pago] } = await pool.query(
-      'UPDATE pagos SET flow_refund_status=$2, flow_refund_status_en=NOW() WHERE flow_refund_token=$1 RETURNING *',
+    // Solo las filas cuyo estado cambia: Flow puede repetir el mismo aviso, y
+    // eso no debe repetir las notificaciones. Un plan cancelado tiene varias
+    // filas (una por visita) con un solo reembolso: se avisa una vez, por la suma.
+    const { rows: cambiados } = await pool.query(
+      `UPDATE pagos SET flow_refund_status=$2, flow_refund_status_en=NOW()
+       WHERE flow_refund_token=$1 AND flow_refund_status IS DISTINCT FROM $2 RETURNING *`,
       [token, String(refundData.status)]);
+    const pago = cambiados[0];
+    const monto = cambiados.reduce((suma, p) => suma + p.monto_total, 0);
     if (pago && ['rejected', 'cancelled'].includes(refundData.status)) {
-      await notificar(await idsAdmins(), 'reembolso', `El reembolso del servicio #${pago.servicio_id} no se completó`,
+      await notificar(await idsAdmins(), 'reembolso', `Un reembolso de ${pesos(monto)} no se completó (servicio #${pago.servicio_id})`,
         `Flow lo marcó como ${refundData.status}: el cliente no recibió su dinero. Hay que contactarlo para resolverlo.`,
         { servicio_id: pago.servicio_id });
     }
     if (pago && refundData.status === 'refunded') {
       await notificar(pago.cliente_id, 'reembolso', 'Tu devolución quedó completa',
-        `Ya te devolvimos ${pesos(pago.monto_total)} por el servicio #${pago.servicio_id}.`, { servicio_id: pago.servicio_id });
+        `Ya te devolvimos ${pesos(monto)}.`, { servicio_id: pago.servicio_id });
     }
     res.json({ ok: true });
   } catch(e) { responderErrorFlow(res, e); }
@@ -1109,9 +1115,16 @@ async function procesoDiario() {
   const publicadas = await pagosTrabajador.promoverVisitasDelDia(pool);
   for (const servicio of publicadas) await notificarWorkers(servicio);
   const sinConfirmar = await pagosTrabajador.reembolsosSinConfirmar(pool);
+  // Agrupado por reembolso: un plan cancelado es un solo reembolso de Flow
+  // repartido en varias filas, y merece un solo aviso.
+  const porReembolso = new Map();
   for (const pago of sinConfirmar) {
+    const previo = porReembolso.get(pago.flow_refund_token);
+    porReembolso.set(pago.flow_refund_token, { pago: previo?.pago || pago, monto: (previo?.monto || 0) + pago.monto_total });
+  }
+  for (const { pago, monto } of porReembolso.values()) {
     await notificar(await idsAdmins(), 'reembolso', `Reembolso sin confirmar hace 72 horas: servicio #${pago.servicio_id}`,
-      `Flow todavía no informa la devolución de ${pesos(pago.monto_total)}. Revisa el panel de Flow y, si hace falta, contacta al cliente.`,
+      `Flow todavía no informa la devolución de ${pesos(monto)}. Revisa el panel de Flow y, si hace falta, contacta al cliente.`,
       { servicio_id: pago.servicio_id });
   }
   const sinAseador = await pagosTrabajador.serviciosSinAseador(pool);
@@ -1229,6 +1242,50 @@ app.post('/api/usuarios/cambiar-clave', verificarToken, async (req, res) => {
     await pool.query('UPDATE usuarios SET password=$2 WHERE id=$1', [req.usuario.id, await bcrypt.hash(String(nueva), 10)]);
     res.json({ mensaje: 'Listo, cambiamos tu contraseña.' });
   } catch(e) { fallo(res, e, 'cambiar la contraseña'); }
+});
+
+// Planes activos con lo que queda por hacer: el admin los ve para poder
+// cancelar uno cuando el cliente lo pide por soporte.
+app.get('/api/admin/planes', verificarToken, exigirRol('admin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT p.id, p.tipo, p.visitas, p.total, p.fecha_inicio, p.pagado_en, p.direccion, p.metros,
+              c.nombre AS cliente_nombre, c.email AS cliente_email,
+              COUNT(s.id) FILTER (WHERE s.estado IN ('programado', 'buscando_worker'))::int AS visitas_pendientes,
+              COUNT(s.id) FILTER (WHERE s.estado = 'pagado')::int AS visitas_hechas,
+              COALESCE(SUM(s.total_cliente) FILTER (WHERE s.estado IN ('programado', 'buscando_worker')), 0)::int AS monto_pendiente
+       FROM planes p JOIN usuarios c ON c.id=p.cliente_id LEFT JOIN servicios s ON s.plan_id=p.id
+       WHERE p.estado='activo' GROUP BY p.id, c.nombre, c.email ORDER BY p.pagado_en DESC`);
+    res.json(rows);
+  } catch(e) { fallo(res, e, 'listar los planes'); }
+});
+
+app.post('/api/admin/planes/:id/cancelar', verificarToken, exigirRol('admin'), exigirFlow, async (req, res) => {
+  try {
+    const r = await pagosTrabajador.enTransaccion(pool, (db) => pagosTrabajador.cancelarPlan(db, Number(req.params.id)));
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    const { rows: [cliente] } = await pool.query('SELECT email FROM usuarios WHERE id=$1', [r.plan.cliente_id]);
+    const refundOrder = `ASEADA-PLAN-REEMBOLSO-${r.plan.id}-${Date.now()}`;
+    try {
+      const refund = await flowPost('/refund/create', {
+        refundCommerceOrder: refundOrder,
+        receiverEmail: cliente.email,
+        amount: r.monto,
+        urlCallBack: `${PUBLIC_URL}/pagos/flow/reembolso-confirmacion`,
+        commerceTrxId: r.plan.flow_order || ''
+      });
+      await pool.query('UPDATE pagos SET flow_refund_token=$1, flow_refund_order=$2 WHERE id = ANY($3::int[])',
+        [refund.token, refundOrder, r.pagos.map((p) => p.id)]);
+    } catch (error) {
+      console.error(`[aseada] refund/create fallo al cancelar el plan #${r.plan.id}:`, error.message);
+      return res.json({
+        ...r, pendiente: `Flow no aceptó el reembolso (${error.message}). Hazlo a mano en el panel de Flow por ${pesos(r.monto)}: orden ${r.plan.flow_order}.`
+      });
+    }
+    await notificar(r.plan.cliente_id, 'reembolso', 'Cancelamos tu plan',
+      `Cancelamos las ${r.visitas} visitas que quedaban de tu plan y te devolvemos ${pesos(r.monto)} en máximo 72 horas. Flow te enviará un correo para confirmarlo.`);
+    res.json(r);
+  } catch(e) { fallo(res, e, 'cancelar el plan'); }
 });
 
 app.get('/api/admin/transferencias', verificarToken, exigirRol('admin'), async (req, res) => {

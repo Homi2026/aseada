@@ -463,7 +463,33 @@ async function serviciosSinAseador(db, { ahora = new Date(), horas = HORAS_SIN_A
   return rows;
 }
 
+/**
+ * Cancela un plan: las visitas que todavia no tienen aseador (programadas o
+ * en la bolsa) se marcan reembolsadas junto con sus pagos, y el plan queda
+ * 'cancelado'. Las visitas en curso o ya hechas no se tocan. Devuelve los
+ * pagos devueltos y su suma, para pedir un solo reembolso a Flow. Va dentro de
+ * una transaccion: toca planes, servicios y pagos.
+ */
+async function cancelarPlan(db, planId, { ahora = new Date() } = {}) {
+  const { rows: [plan] } = await db.query('SELECT * FROM planes WHERE id=$1 FOR UPDATE', [planId]);
+  if (!plan) return { error: 'Plan no encontrado', status: 404 };
+  if (plan.estado !== 'activo') return { error: 'Solo se puede cancelar un plan activo', status: 400 };
+  const { rows: visitas } = await db.query(
+    `UPDATE servicios SET estado='reembolsado'
+     WHERE plan_id=$1 AND estado IN ('programado', 'buscando_worker') RETURNING id`, [planId]);
+  if (visitas.length === 0) return { error: 'No quedan visitas sin aseador que cancelar', status: 400 };
+  const { rows: pagos } = await db.query(
+    `UPDATE pagos SET estado='reembolsado', reembolsado_en=$2
+     WHERE servicio_id = ANY($1::int[]) AND estado='pagado' RETURNING *`,
+    [visitas.map((v) => v.id), ahora]);
+  const { rows: [cancelado] } = await db.query(
+    "UPDATE planes SET estado='cancelado', cancelado_en=$2 WHERE id=$1 RETURNING *", [planId, ahora]);
+  const monto = pagos.reduce((suma, p) => suma + p.monto_total, 0);
+  return { plan: cancelado, visitas: visitas.length, pagos, monto };
+}
+
 module.exports = {
+  cancelarPlan,
   HORAS_SIN_ASEADOR, serviciosSinAseador,
   VISITAS_POR_PLAN, comisionParaPrecio, precioVisitaPlan, activarPlan, promoverVisitasDelDia, reembolsosSinConfirmar,
   HORAS_REVISION, MOTIVOS_RECLAMO, HORAS_TOLERANCIA_LLEGADA,

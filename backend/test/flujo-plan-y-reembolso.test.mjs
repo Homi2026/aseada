@@ -149,3 +149,47 @@ test('una visita de plan que no llego se reembolsa por la API de Flow, y el avis
     assert.equal(despues.flow_refund_status, 'refunded');
   });
 });
+
+test('el admin cancela un plan: devuelve en un solo reembolso las visitas sin aseador y deja intactas las en curso', async () => {
+  const e = await escenario();
+  const admin = (await e.db.query(
+    "INSERT INTO usuarios(nombre,email,password,rol,activo) VALUES('admin@t.cl','admin@t.cl','h','admin',true) RETURNING id")).rows[0].id;
+  const tokenAdmin = jwt.sign({ id: admin, email: 'admin@t.cl', rol: 'admin' }, process.env.JWT_SECRET);
+  await conServidor(async (base) => {
+    await post(base, '/api/planes', { tipo: 'mensual', metros: 50, con_materiales: false, direccion: 'Calle 1', fecha_inicio: INICIO }, e.tokenCliente);
+    await post(base, '/pagos/flow/plan/confirmacion', { token: 'tok-plan-1' });
+    const { rows: [plan] } = await e.db.query("SELECT id FROM planes WHERE flow_token='tok-plan-1'");
+    const { rows: [primera] } = await e.db.query('SELECT id FROM servicios WHERE plan_id=$1 ORDER BY numero_visita LIMIT 1', [plan.id]);
+    await e.db.query("UPDATE servicios SET estado='en_proceso', worker_id=$2 WHERE id=$1", [primera.id, e.worker]);
+
+    const listado = await (await fetch(`${base}/api/admin/planes`, { headers: { Authorization: `Bearer ${tokenAdmin}` } })).json();
+    assert.equal(listado[0].visitas_pendientes, 3);
+    assert.equal(listado[0].monto_pendiente, 3 * 36950);
+
+    assert.equal((await post(base, `/api/admin/planes/${plan.id}/cancelar`, {}, e.tokenCliente)).status, 403, 'solo el admin');
+    const pedidosAntes = pedidosAFlow.filter((p) => p.ruta === '/refund/create').length;
+    const r = await post(base, `/api/admin/planes/${plan.id}/cancelar`, {}, tokenAdmin);
+    assert.equal(r.status, 200);
+    const cuerpo = await r.json();
+    assert.equal(cuerpo.monto, 3 * 36950);
+
+    const reembolsos = pedidosAFlow.filter((p) => p.ruta === '/refund/create');
+    assert.equal(reembolsos.length, pedidosAntes + 1, 'un solo reembolso para las 3 visitas');
+    assert.match(reembolsos.at(-1).cuerpo, new RegExp(`amount=${3 * 36950}`));
+
+    const { rows: estados } = await e.db.query('SELECT estado FROM servicios WHERE plan_id=$1 ORDER BY numero_visita', [plan.id]);
+    assert.deepEqual(estados.map((s) => s.estado), ['en_proceso', 'reembolsado', 'reembolsado', 'reembolsado']);
+    const { rows: [p2] } = await e.db.query('SELECT estado FROM planes WHERE id=$1', [plan.id]);
+    assert.equal(p2.estado, 'cancelado');
+
+    // Flow avisa dos veces la misma devolucion: el cliente recibe un solo aviso, por el total.
+    await post(base, '/pagos/flow/reembolso-confirmacion', { token: 'ref-1' });
+    await post(base, '/pagos/flow/reembolso-confirmacion', { token: 'ref-1' });
+    const { rows: avisos } = await e.db.query(
+      "SELECT mensaje FROM notificaciones WHERE usuario_id=$1 AND titulo='Tu devolución quedó completa'", [e.cliente]);
+    assert.equal(avisos.length, 1);
+    assert.match(avisos[0].mensaje, /110\.850/);
+
+    assert.equal((await post(base, `/api/admin/planes/${plan.id}/cancelar`, {}, tokenAdmin)).status, 400, 'no se cancela dos veces');
+  });
+});

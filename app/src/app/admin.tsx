@@ -21,7 +21,20 @@ export default function Admin() {
   const [errorCarga, setErrorCarga] = useState('');
   const [errorWorkers, setErrorWorkers] = useState('');
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [planes, setPlanes] = useState<any[]>([]);
   const [emailClave, setEmailClave] = useState('');
+
+  const cancelarPlan = async (p: any) => {
+    const ok = await confirmar('¿Cancelar el plan?',
+      `Se cancelan las ${p.visitas_pendientes} visitas que aún no tienen aseador y se le devuelven ${pesos(p.monto_pendiente)} a ${p.cliente_nombre} por Flow. Las visitas en curso o hechas no cambian.`,
+      'Cancelar plan');
+    if (!ok) return;
+    await accion(`p${p.id}`, async (token) => {
+      const res = await api.post(`/api/admin/planes/${p.id}/cancelar`, {}, token);
+      avisar(res.pendiente ? 'Plan cancelado, falta el reembolso' : 'Plan cancelado',
+        res.pendiente || `Se pidió a Flow devolver ${pesos(res.monto)}.`);
+    });
+  };
   const [claveTemporal, setClaveTemporal] = useState<{ email: string; clave: string } | null>(null);
 
   const restablecerClave = async () => {
@@ -62,6 +75,13 @@ export default function Admin() {
         if (esSesionVencida(error)) return volverAlLogin();
         setWorkers([]);
         setErrorWorkers(error?.message || 'No pudimos cargar los aseadores.');
+      }
+      try {
+        const p = await api.get('/api/admin/planes', token);
+        setPlanes(Array.isArray(p) ? p : []);
+      } catch (error: any) {
+        if (esSesionVencida(error)) return volverAlLogin();
+        setPlanes([]);
       }
     } catch (e: any) {
       // Una sesion vencida no es "no hay nada que administrar": manda al login.
@@ -244,6 +264,21 @@ export default function Admin() {
               <Text style={styles.btnTexto}>Devolver al cliente</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      ))}
+
+      <Text style={styles.seccion}>Planes activos · {planes.length}</Text>
+      {planes.length === 0 && <Text style={styles.vacio}>Sin planes activos.</Text>}
+      {planes.map((p) => (
+        <View key={p.id} style={styles.card}>
+          <Text style={styles.nombre}>Plan #{p.id} · {p.tipo === 'trimestral' ? '3 meses' : 'mensual'} · {p.cliente_nombre}</Text>
+          <Text style={styles.detalle}>{p.cliente_email} · {p.direccion} · {p.metros} m²</Text>
+          <Text style={styles.detalle}>Pagó {pesos(p.total)} · {p.visitas_hechas} de {p.visitas} visitas hechas · {p.visitas_pendientes} sin aseador ({pesos(p.monto_pendiente)})</Text>
+          {p.visitas_pendientes > 0 && (
+            <TouchableOpacity style={[styles.btn, styles.btnRojo]} onPress={() => cancelarPlan(p)} disabled={ocupado === `p${p.id}`}>
+              <Text style={styles.btnTexto}>Cancelar visitas pendientes y devolver</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ))}
 

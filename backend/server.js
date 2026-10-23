@@ -802,7 +802,8 @@ app.get('/api/mis-servicios', verificarToken, async (req, res) => {
     // El trabajador ve tambien en que va su pago de cada servicio.
     const r = await pool.query(
       `SELECT s.*, t.estado AS pago_trabajador_estado, t.monto_a_transferir AS pago_trabajador_monto,
-              t.disponible_desde AS pago_trabajador_disponible, t.transferido_en AS pago_trabajador_transferido_en
+              t.disponible_desde AS pago_trabajador_disponible, t.transferido_en AS pago_trabajador_transferido_en,
+              (SELECT c.puntaje FROM calificaciones c WHERE c.servicio_id = s.id AND c.autor_id = s.cliente_id LIMIT 1) AS calificacion
        FROM servicios s LEFT JOIN transferencias_trabajador t ON t.servicio_id = s.id AND s.worker_id = $1
        WHERE s.${col}=$1 ORDER BY s.id DESC`, [req.usuario.id]);
     res.json(r.rows);
@@ -874,6 +875,15 @@ app.post('/api/servicios/:id/reclamo', verificarToken, exigirRol('cliente'), asy
     }
     res.json({ mensaje: 'Recibimos tu reclamo. Tu pago queda retenido y te contactaremos para resolverlo; si el servicio no se realizó, te devolvemos el dinero.', servicio: r.servicio });
   } catch(e) { fallo(res, e, 'registrar el reclamo'); }
+});
+
+app.post('/api/servicios/:id/calificar', verificarToken, exigirRol('cliente'), async (req, res) => {
+  try {
+    const r = await pagosTrabajador.calificar(pool, Number(req.params.id), req.usuario.id,
+      { puntaje: req.body?.puntaje, comentario: req.body?.comentario });
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    res.json({ mensaje: '¡Gracias por calificar!', calificacion: r.calificacion });
+  } catch(e) { fallo(res, e, 'guardar la calificación'); }
 });
 
 // El cliente elige reagendar en vez de pedir el reembolso cuando nadie llego:

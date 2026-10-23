@@ -502,8 +502,31 @@ async function cancelarPlan(db, planId, { ahora = new Date() } = {}) {
   return { plan: cancelado, visitas: visitas.length, pagos, monto };
 }
 
+/**
+ * El cliente califica al aseador de un servicio ya confirmado, una sola vez,
+ * y se recalcula el promedio del aseador.
+ */
+async function calificar(db, servicioId, clienteId, { puntaje, comentario = '' } = {}) {
+  const p = Number(puntaje);
+  if (!Number.isInteger(p) || p < 1 || p > 5) return { error: 'La calificación debe ser de 1 a 5 estrellas', status: 400 };
+  const { rows: [s] } = await db.query('SELECT cliente_id, worker_id, estado FROM servicios WHERE id=$1', [servicioId]);
+  if (!s) return { error: 'Servicio no encontrado', status: 404 };
+  if (s.cliente_id !== clienteId) return { error: 'Solo el cliente del servicio puede calificarlo', status: 403 };
+  if (s.estado !== 'pagado' || !s.worker_id) return { error: 'Solo se califica un servicio ya confirmado', status: 400 };
+  const { rows: [nueva] } = await db.query(
+    `INSERT INTO calificaciones(servicio_id, autor_id, destinatario_id, puntaje, comentario)
+     VALUES($1,$2,$3,$4,$5) ON CONFLICT (servicio_id, autor_id, destinatario_id) DO NOTHING RETURNING *`,
+    [servicioId, clienteId, s.worker_id, p, String(comentario || '').trim().slice(0, 1000) || null]);
+  if (!nueva) return { error: 'Ya calificaste este servicio', status: 409 };
+  await db.query(
+    `UPDATE usuarios SET calificacion_promedio =
+       (SELECT ROUND(AVG(puntaje)::numeric, 1) FROM calificaciones WHERE destinatario_id=$1)
+     WHERE id=$1`, [s.worker_id]);
+  return { calificacion: nueva };
+}
+
 module.exports = {
-  cancelarPlan, noLlegadaComprobada,
+  calificar, cancelarPlan, noLlegadaComprobada,
   HORAS_SIN_ASEADOR, serviciosSinAseador,
   VISITAS_POR_PLAN, comisionParaPrecio, precioVisitaPlan, activarPlan, promoverVisitasDelDia, reembolsosSinConfirmar,
   HORAS_REVISION, MOTIVOS_RECLAMO, HORAS_TOLERANCIA_LLEGADA,

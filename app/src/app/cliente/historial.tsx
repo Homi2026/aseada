@@ -25,6 +25,7 @@ export default function HistorialCliente() {
   const [reclamando, setReclamando] = useState<number | null>(null);
   const [motivo, setMotivo] = useState('');
   const [detalle, setDetalle] = useState('');
+  const [puntaje, setPuntaje] = useState<Record<number, number>>({});
 
   const cargar = useCallback(async () => {
     try {
@@ -81,6 +82,12 @@ export default function HistorialCliente() {
       await cargar();
     });
   };
+
+  const calificar = (id: number) => conSesion(id, async (token) => {
+    const res = await api.post(`/api/servicios/${id}/calificar`, { puntaje: puntaje[id] }, token);
+    avisar('¡Gracias!', res.mensaje);
+    await cargar();
+  });
 
   const reagendar = (id: number, cuando: 'hoy' | 'manana') => conSesion(id, async (token) => {
     const res = await api.post(`/api/servicios/${id}/reagendar`, { cuando }, token);
@@ -172,6 +179,28 @@ export default function HistorialCliente() {
                   </>
                 )}
 
+                {item.estado === 'pagado' && item.worker_id && (
+                  item.calificacion ? (
+                    <Text style={styles.nota}>Tu calificación: {'★'.repeat(item.calificacion)}{'☆'.repeat(5 - item.calificacion)}</Text>
+                  ) : (
+                    <View style={styles.calificar}>
+                      <Text style={styles.nota}>¿Cómo estuvo el aseador?</Text>
+                      <View style={styles.estrellas}>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <TouchableOpacity key={n} onPress={() => setPuntaje({ ...puntaje, [item.id]: n })} accessibilityLabel={`${n} estrellas`}>
+                            <Text style={styles.estrella}>{(puntaje[item.id] || 0) >= n ? '★' : '☆'}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      {!!puntaje[item.id] && (
+                        <TouchableOpacity style={styles.btnPrincipal} onPress={() => calificar(item.id)} disabled={cargando}>
+                          {cargando ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTexto}>Enviar calificación</Text>}
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )
+                )}
+
                 {item.estado === 'en_reclamo' && sinLlegada(item) && (
                   <View style={styles.reagendo}>
                     <Text style={styles.nota}>El aseador no llegó. Tu pago sigue retenido. ¿Qué prefieres?</Text>
@@ -241,6 +270,9 @@ const styles = StyleSheet.create({
   btnPrincipal: { backgroundColor: '#6C63FF', borderRadius: 10, padding: 13, alignItems: 'center', marginTop: 12 },
   reagendo: { marginTop: 4 },
   btnManana: { marginTop: 8 },
+  calificar: { marginTop: 4 },
+  estrellas: { flexDirection: 'row', gap: 6, marginTop: 6 },
+  estrella: { fontSize: 30, color: '#f5a524' },
   btnTexto: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
   btnSecundario: { borderRadius: 10, padding: 11, alignItems: 'center', marginTop: 8, borderWidth: 1, borderColor: '#e5c9c5' },
   btnSecundarioTexto: { color: '#b91c1c', fontSize: 14, fontWeight: '600' },

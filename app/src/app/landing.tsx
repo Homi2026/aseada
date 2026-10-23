@@ -214,6 +214,8 @@ export default function Landing() {
         <Text style={styles.footerBrand}>Aseada</Text>
         {/* Sin enlace a redes hasta que exista la cuenta: el link apuntaba al
             home de Instagram, no a un perfil de Aseada. */}
+        <Text style={styles.footerText} onPress={() => router.push('/terminos')}>Términos</Text>
+        <Text style={styles.footerText} onPress={() => router.push('/privacidad')}>Privacidad</Text>
         <Text style={styles.footerText}>© 2026 Aseada</Text>
       </View>
     </ScrollView>

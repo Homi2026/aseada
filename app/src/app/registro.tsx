@@ -62,6 +62,12 @@ export default function Registro() {
       <TextInput style={styles.input} placeholder="Teléfono" value={telefono} onChangeText={setTelefono} keyboardType="phone-pad" />
       <TextInput style={styles.input} placeholder="Contraseña" value={password} onChangeText={setPassword} secureTextEntry />
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Text style={styles.legal}>
+        Al crear tu cuenta aceptas los{' '}
+        <Text style={styles.legalLink} onPress={() => router.push('/terminos')}>Términos y condiciones</Text>
+        {' '}y la{' '}
+        <Text style={styles.legalLink} onPress={() => router.push('/privacidad')}>Política de privacidad</Text>.
+      </Text>
       <TouchableOpacity style={styles.btn} onPress={registrar} disabled={loading}>
         {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>Crear cuenta</Text>}
       </TouchableOpacity>
@@ -85,5 +91,7 @@ const styles = StyleSheet.create({
   btn: { width: '100%', backgroundColor: '#6C63FF', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 16 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   link: { color: '#6C63FF', fontSize: 14 },
+  legal: { fontSize: 13, color: '#666', textAlign: 'center', lineHeight: 19, marginBottom: 12, width: '100%' },
+  legalLink: { color: '#6C63FF', fontWeight: '600' },
   error: { color: '#b42318', backgroundColor: '#fff1f0', borderRadius: 8, padding: 10, width: '100%', marginBottom: 12, textAlign: 'center' },
 });

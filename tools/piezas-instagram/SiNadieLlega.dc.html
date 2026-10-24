@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Si nadie llega</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Bricolage Grotesque', -apple-system, system-ui, sans-serif; }
+  </style>
+</helmet>
+<div style="width: 1080px; height: 1080px; box-sizing: border-box; background: #F6F7F1; color: #15201A; padding: 92px; display: flex; flex-direction: column; justify-content: space-between">
+
+  <div style="display: flex; flex-direction: column; gap: 22px">
+    <span style="font-size: 26px; font-weight: 600; color: #1F5C46; letter-spacing: 2px; text-transform: uppercase">La pregunta de siempre</span>
+    <h1 style="margin: 0; font-size: 96px; line-height: 0.98; font-weight: 800; letter-spacing: -2.5px; max-width: 850px">¿Y si no llega nadie?</h1>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 22px">
+
+    <div style="background: #FFFFFF; border: 2px solid #E3EAE1; border-radius: 22px; padding: 34px 38px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 27px; font-weight: 800; color: #1F5C46; letter-spacing: 1px; text-transform: uppercase">Te avisamos</span>
+      <span style="font-size: 34px; line-height: 1.3">Si el aseador no marca su llegada, lo detectamos solos. No tienes que reclamar nada.</span>
+    </div>
+
+    <div style="background: #FFFFFF; border: 2px solid #E3EAE1; border-radius: 22px; padding: 34px 38px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 27px; font-weight: 800; color: #1F5C46; letter-spacing: 1px; text-transform: uppercase">Tú eliges</span>
+      <span style="font-size: 34px; line-height: 1.3">Lo reagendamos con otro aseador, hoy o mañana. O te devolvemos el dinero.</span>
+    </div>
+
+    <div style="background: #1F5C46; color: #F6F7F1; border-radius: 22px; padding: 34px 38px; display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 27px; font-weight: 800; color: #E8A93B; letter-spacing: 1px; text-transform: uppercase">Máximo 72 horas</span>
+      <span style="font-size: 34px; line-height: 1.3">Si prefieres la devolución, la iniciamos de inmediato.</span>
+    </div>
+
+  </div>
+
+  <p style="margin: 0; font-size: 29px; color: #5B665F; line-height: 1.4">
+    Tu pago sigue retenido todo ese tiempo. Nunca queda en manos de alguien que no llegó.
+  </p>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

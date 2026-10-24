@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Cómo funciona</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Bricolage Grotesque', -apple-system, system-ui, sans-serif; }
+  </style>
+</helmet>
+<div style="width: 1080px; height: 1080px; box-sizing: border-box; background: #F6F7F1; color: #15201A; padding: 88px; display: flex; flex-direction: column; gap: 56px">
+
+  <div style="display: flex; flex-direction: column; gap: 18px">
+    <span style="font-size: 26px; font-weight: 600; color: #1F5C46; letter-spacing: 2px; text-transform: uppercase">Cómo funciona</span>
+    <h1 style="margin: 0; font-size: 88px; line-height: 1; font-weight: 800; letter-spacing: -2.5px">Agendar toma<br>dos minutos</h1>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 30px; flex-grow: 1">
+
+    <div style="display: flex; gap: 30px; align-items: flex-start">
+      <span style="font-size: 76px; font-weight: 800; line-height: 0.9; color: #E8A93B; width: 92px; flex: none">01</span>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 6px">
+        <span style="font-size: 42px; font-weight: 800; line-height: 1.1">Eliges el tamaño de tu hogar</span>
+        <span style="font-size: 29px; color: #5B665F; line-height: 1.35">Ves el precio exacto en pantalla, antes de pagar.</span>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 30px; align-items: flex-start">
+      <span style="font-size: 76px; font-weight: 800; line-height: 0.9; color: #E8A93B; width: 92px; flex: none">02</span>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 6px">
+        <span style="font-size: 42px; font-weight: 800; line-height: 1.1">Un aseador toma tu solicitud</span>
+        <span style="font-size: 29px; color: #5B665F; line-height: 1.35">Ves su nombre, teléfono y calificación.</span>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 30px; align-items: flex-start">
+      <span style="font-size: 76px; font-weight: 800; line-height: 0.9; color: #E8A93B; width: 92px; flex: none">03</span>
+      <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 6px">
+        <span style="font-size: 42px; font-weight: 800; line-height: 1.1">Confirmas y recién ahí se paga</span>
+        <span style="font-size: 29px; color: #5B665F; line-height: 1.35">Tu dinero queda retenido hasta ese momento.</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="background: #1F5C46; color: #F6F7F1; border-radius: 20px; padding: 32px 38px; display: flex; align-items: center; justify-content: space-between">
+    <span style="font-size: 32px; font-weight: 600">Pruébalo hoy</span>
+    <span style="font-size: 30px; color: #E8A93B; font-weight: 800">Link en la bio</span>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

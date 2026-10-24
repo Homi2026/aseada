@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Precios claros</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Bricolage Grotesque', -apple-system, system-ui, sans-serif; }
+  </style>
+</helmet>
+<div style="width: 1080px; height: 1080px; box-sizing: border-box; background: #F6F7F1; color: #15201A; padding: 88px; display: flex; flex-direction: column; justify-content: space-between">
+
+  <div style="display: flex; flex-direction: column; gap: 20px">
+    <span style="font-size: 26px; font-weight: 600; color: #1F5C46; letter-spacing: 2px; text-transform: uppercase">Precios claros</span>
+    <h1 style="margin: 0; font-size: 82px; line-height: 1; font-weight: 800; letter-spacing: -2px; max-width: 820px">Sabes cuánto pagas antes de agendar</h1>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 18px">
+
+    <div style="display: flex; align-items: center; justify-content: space-between; background: #FFFFFF; border: 2px solid #E3EAE1; border-radius: 20px; padding: 30px 36px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 38px; font-weight: 800">Depto pequeño</span>
+        <span style="font-size: 27px; color: #5B665F">Hasta 50 m² · 3 horas</span>
+      </div>
+      <span style="font-size: 52px; font-weight: 800; color: #1F5C46">$41.990</span>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; background: #1F5C46; color: #F6F7F1; border: 2px solid #1F5C46; border-radius: 20px; padding: 30px 36px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <div style="display: flex; align-items: center; gap: 14px">
+          <span style="font-size: 38px; font-weight: 800">Casa mediana</span>
+          <span style="background: #E8A93B; color: #15201A; font-size: 21px; font-weight: 800; padding: 6px 14px; border-radius: 999px">La más pedida</span>
+        </div>
+        <span style="font-size: 27px; color: #E3EAE1">Hasta 120 m² · 4 horas</span>
+      </div>
+      <span style="font-size: 52px; font-weight: 800; color: #E8A93B">$69.990</span>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; background: #FFFFFF; border: 2px solid #E3EAE1; border-radius: 20px; padding: 30px 36px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 38px; font-weight: 800">Casa grande</span>
+        <span style="font-size: 27px; color: #5B665F">Hasta 200 m² · 5 horas</span>
+      </div>
+      <span style="font-size: 52px; font-weight: 800; color: #1F5C46">$94.990</span>
+    </div>
+
+  </div>
+
+  <p style="margin: 0; font-size: 28px; color: #5B665F; line-height: 1.4">
+    Sin letra chica. El precio incluye todo y lo ves antes de confirmar.
+  </p>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

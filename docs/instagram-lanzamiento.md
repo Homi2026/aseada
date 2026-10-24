@@ -1,12 +1,33 @@
 # Semana de lanzamiento en Instagram
 
-Siete publicaciones, una por día. Las imágenes están en el lienzo de diseño
-(Lanzamiento Aseada · Instagram); acá van los textos para copiar y pegar.
+Siete publicaciones, una por día. Los textos están acá para copiar y pegar.
+
+**Las imágenes ya están listas como archivos PNG**, en `~/Documents/aseada-instagram/`
+(carpeta Documentos → aseada-instagram). Son cuadradas, 1080×1080, listas para subir.
 
 **Antes de publicar nada:** pon el link del sitio en la biografía de Instagram.
 Todas las piezas dicen "Link en la bio".
 
 Sitio: https://web-production-d6ba2.up.railway.app
+
+## Calendario
+
+Del domingo 25 al sábado 31 de octubre. Las horas apuntan a cuando la gente
+está en el teléfono: tarde-noche entre semana, media mañana el sábado.
+
+| Día | Fecha | Hora | Publicación | Archivo |
+|---|---|---|---|---|
+| 1 | Dom 25 oct | 19:00 | Lanzamiento | `1-lanzamiento.png` |
+| 2 | Lun 26 oct | 13:00 | Precios claros | `2-precios.png` |
+| 3 | Mar 27 oct | 19:00 | Pago protegido | `3-pago-protegido.png` |
+| 4 | Mié 28 oct | 13:00 | Cómo funciona | `4-como-funciona.png` |
+| 5 | Jue 29 oct | 19:00 | Plan semanal | `5-plan-semanal.png` |
+| 6 | Vie 30 oct | 19:00 | Si nadie llega | `6-si-nadie-llega.png` |
+| 7 | Sáb 31 oct | 11:00 | Convocatoria a aseadores | `7-aseadores.png` |
+
+Si prefieres otras fechas, corre el calendario completo: el orden importa más
+que los días exactos. El día 1 tiene que ir primero porque anuncia el sitio, y
+el día 7 al final porque convoca aseadores una vez que ya se vio la propuesta.
 
 ## Hashtags
 
@@ -108,6 +129,27 @@ qué trabajos tomar.
 Postula desde el link en la bio.
 
 ---
+
+## Cómo publicar
+
+**A mano (no depende de nada).** Abres Instagram, subes el PNG del día y pegas
+su texto. Son dos minutos por publicación.
+
+**Programado con Metricool (recomendado).** Metricool sube las publicaciones
+solo, a la hora que fijes. Hoy la cuenta tiene conectada `recetasdecorazon`,
+no Aseada. Para usarlo:
+
+1. Entra a Metricool y crea una marca nueva llamada "Aseada".
+2. Conecta ahí el Instagram de Aseada (tiene que ser cuenta de empresa o de
+   creador; una cuenta personal no se puede programar).
+3. Avísame: con la marca conectada programo las 7 de una vez, con sus fechas y
+   horas, y puedo consultar cuál es la mejor hora según tu audiencia real.
+
+## Si quieres cambiar las imágenes
+
+Los diseños viven en el lienzo "Lanzamiento Aseada · Instagram". Después de
+editarlos ahí, se vuelven a generar los PNG corriendo el script de exportación.
+Pídemelo y lo hago.
 
 ## Después de la semana
 

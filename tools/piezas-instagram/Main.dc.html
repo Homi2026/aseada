@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Lanzamiento Aseada</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Bricolage Grotesque', -apple-system, system-ui, sans-serif; }
+  </style>
+</helmet>
+<div style="width: 1080px; height: 1080px; box-sizing: border-box; background: #1F5C46; color: #F6F7F1; padding: 96px; display: flex; flex-direction: column; justify-content: space-between">
+
+  <div style="display: flex; justify-content: space-between; align-items: baseline">
+    <span style="font-size: 40px; font-weight: 800; letter-spacing: -0.5px">Aseada</span>
+    <span style="font-size: 26px; font-weight: 600; color: #E8A93B; letter-spacing: 2px; text-transform: uppercase">Ya estamos en línea</span>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 40px">
+    <h1 style="margin: 0; font-size: 116px; line-height: 0.95; font-weight: 800; letter-spacing: -3px; max-width: 850px">Tu casa limpia.<br>Tu tiempo,<br>de vuelta.</h1>
+    <p style="margin: 0; font-size: 36px; line-height: 1.4; color: #E3EAE1; max-width: 760px">
+      Agenda aseo del hogar con aseadores de confianza. Sabes el precio antes de solicitar.
+    </p>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 24px; border-top: 2px solid rgba(246,247,241,0.28); padding-top: 40px">
+    <span style="background: #E8A93B; color: #15201A; font-size: 30px; font-weight: 800; padding: 18px 34px; border-radius: 999px">Agenda hoy</span>
+    <span style="font-size: 30px; color: #E3EAE1">Link en la bio</span>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

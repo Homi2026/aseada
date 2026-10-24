@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Pago protegido</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap">
+  <style>
+    body { margin: 0; font-family: 'Bricolage Grotesque', -apple-system, system-ui, sans-serif; }
+  </style>
+</helmet>
+<div style="width: 1080px; height: 1080px; box-sizing: border-box; background: #15201A; color: #F6F7F1; padding: 92px; display: flex; flex-direction: column; justify-content: space-between">
+
+  <span style="font-size: 26px; font-weight: 600; color: #E8A93B; letter-spacing: 2px; text-transform: uppercase">Pago protegido</span>
+
+  <div style="display: flex; flex-direction: column; gap: 44px">
+    <h1 style="margin: 0; font-size: 94px; line-height: 1; font-weight: 800; letter-spacing: -2.5px; max-width: 880px">
+      Tu dinero no se entrega hasta que <span style="color: #E8A93B">tú confirmas</span>
+    </h1>
+    <p style="margin: 0; font-size: 34px; line-height: 1.45; color: #E3EAE1; max-width: 840px">
+      Pagas al agendar, pero Aseada retiene ese dinero. El aseador lo recibe recién cuando dices que el trabajo quedó bien.
+    </p>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; align-items: center; gap: 22px">
+      <span style="width: 54px; height: 54px; flex: none; border-radius: 999px; background: #1F5C46; display: flex; align-items: center; justify-content: center; font-size: 29px; font-weight: 800; color: #F6F7F1">1</span>
+      <span style="font-size: 32px; color: #F6F7F1">Pagas y lo retenemos</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 22px">
+      <span style="width: 54px; height: 54px; flex: none; border-radius: 999px; background: #1F5C46; display: flex; align-items: center; justify-content: center; font-size: 29px; font-weight: 800; color: #F6F7F1">2</span>
+      <span style="font-size: 32px; color: #F6F7F1">Revisas el trabajo terminado</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 22px">
+      <span style="width: 54px; height: 54px; flex: none; border-radius: 999px; background: #E8A93B; display: flex; align-items: center; justify-content: center; font-size: 29px; font-weight: 800; color: #15201A">3</span>
+      <span style="font-size: 32px; font-weight: 600; color: #E8A93B">Confirmas y recién ahí se paga</span>
+    </div>
+  </div>
+
+  <p style="margin: 0; font-size: 28px; color: #9BA79F; line-height: 1.4; border-top: 2px solid rgba(246,247,241,0.18); padding-top: 32px">
+    ¿Hubo un problema? Lo reportas desde la app y te devolvemos el dinero.
+  </p>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1080,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

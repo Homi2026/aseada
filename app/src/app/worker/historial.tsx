@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Linking } from 'react-native';
 import { api, esSesionVencida } from '../../constants/api';
 import { exigirSesion, volverAlLogin } from '../../constants/auth';
 import { avisar, confirmar } from '../../constants/dialogos';
@@ -135,6 +135,19 @@ export default function HistorialWorker() {
                 <Text style={styles.cardPrice}>{item.pago_trabajador_monto ? 'Recibirás' : 'Ganancia bruta'}: {pesos(monto)}</Text>
                 {pago && <Text style={[styles.pago, { color: pago.color }]}>{pago.texto}</Text>}
 
+                {!!item.cliente_nombre && (
+                  <View style={styles.cliente}>
+                    <Text style={styles.clienteNombre}>👤 {item.cliente_nombre}</Text>
+                    {item.cliente_telefono?.trim() ? (
+                      <Text style={styles.clienteContacto} onPress={() => Linking.openURL(`tel:${item.cliente_telefono}`)}>
+                        📞 {item.cliente_telefono}
+                      </Text>
+                    ) : (
+                      <Text style={styles.clienteContacto}>Sin teléfono registrado</Text>
+                    )}
+                  </View>
+                )}
+
                 {item.estado === 'en_proceso' && !item.llegada_en && (
                   <TouchableOpacity style={[styles.btn, styles.btnLlegada]} onPress={() => marcarLlegada(item.id)} disabled={ocupado === item.id}>
                     {ocupado === item.id ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTexto}>📍 Marcar que llegué</Text>}
@@ -164,6 +177,9 @@ const styles = StyleSheet.create({
   cardText: { fontSize: 14, color: '#666', marginBottom: 4 },
   cardPrice: { marginTop: 8, fontSize: 18, fontWeight: 'bold', color: '#6C63FF' },
   pago: { marginTop: 8, fontSize: 13, lineHeight: 19, fontWeight: '600' },
+  cliente: { backgroundColor: '#f1f7f3', borderRadius: 10, padding: 10, marginTop: 10 },
+  clienteNombre: { fontSize: 14, fontWeight: '600', color: '#17231b' },
+  clienteContacto: { fontSize: 14, color: '#1f6b4f', marginTop: 3 },
   btn: { backgroundColor: '#1f6b4f', borderRadius: 10, padding: 13, alignItems: 'center', marginTop: 12 },
   btnLlegada: { backgroundColor: '#b45309' },
   btnTexto: { color: '#fff', fontSize: 15, fontWeight: 'bold' },

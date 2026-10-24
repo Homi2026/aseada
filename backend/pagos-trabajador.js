@@ -525,8 +525,42 @@ async function calificar(db, servicioId, clienteId, { puntaje, comentario = '' }
   return { calificacion: nueva };
 }
 
+/**
+ * El cliente cancela su propio servicio mientras nadie lo haya tomado. Antes
+ * su unica salida era "Reportar un problema", que no corresponde a
+ * arrepentirse. Un servicio ya aceptado no se cancela asi: ahi hay un aseador
+ * que reservo su tiempo, y eso pasa por reclamo o por soporte.
+ *
+ * Va dentro de una transaccion: toca servicios y pagos.
+ */
+async function cancelarServicio(db, servicioId, clienteId, { ahora = new Date() } = {}) {
+  const { rows: [s] } = await db.query('SELECT cliente_id, estado, plan_id FROM servicios WHERE id=$1 FOR UPDATE', [servicioId]);
+  if (!s) return { error: 'Servicio no encontrado', status: 404 };
+  if (s.cliente_id !== clienteId) return { error: 'Solo el cliente del servicio puede cancelarlo', status: 403 };
+  if (s.plan_id) return { error: 'Las visitas de un plan se cancelan escribiendo a soporte', status: 400 };
+  if (!['pendiente_pago', 'buscando_worker'].includes(s.estado)) {
+    return { error: 'Este servicio ya tiene un aseador asignado. Repórtalo como problema o escríbenos a soporte.', status: 400 };
+  }
+  // Sin pagar todavia no hay plata que devolver: se cancela y listo.
+  if (s.estado === 'pendiente_pago') {
+    const { rows: [cancelado] } = await db.query(
+      "UPDATE servicios SET estado='reembolsado' WHERE id=$1 AND estado='pendiente_pago' RETURNING *", [servicioId]);
+    if (!cancelado) return { error: 'No se pudo cancelar', status: 409 };
+    await db.query("UPDATE pagos SET estado='rechazado' WHERE servicio_id=$1 AND estado='pendiente'", [servicioId]);
+    return { servicio: cancelado, pago: null };
+  }
+  const { rows: [pago] } = await db.query(
+    "UPDATE pagos SET estado='reembolsado', reembolsado_en=$2 WHERE servicio_id=$1 AND estado='pagado' RETURNING *",
+    [servicioId, ahora]);
+  if (!pago) return { error: 'No hay un pago retenido que devolver', status: 400 };
+  const { rows: [cancelado] } = await db.query(
+    "UPDATE servicios SET estado='reembolsado' WHERE id=$1 AND estado='buscando_worker' RETURNING *", [servicioId]);
+  if (!cancelado) throw new Error(`El servicio #${servicioId} cambio de estado mientras se cancelaba`);
+  return { servicio: cancelado, pago };
+}
+
 module.exports = {
-  calificar, cancelarPlan, noLlegadaComprobada,
+  calificar, cancelarPlan, cancelarServicio, noLlegadaComprobada,
   HORAS_SIN_ASEADOR, serviciosSinAseador,
   VISITAS_POR_PLAN, comisionParaPrecio, precioVisitaPlan, activarPlan, promoverVisitasDelDia, reembolsosSinConfirmar,
   HORAS_REVISION, MOTIVOS_RECLAMO, HORAS_TOLERANCIA_LLEGADA,

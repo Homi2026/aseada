@@ -803,8 +803,18 @@ app.get('/api/mis-servicios', verificarToken, async (req, res) => {
     const r = await pool.query(
       `SELECT s.*, t.estado AS pago_trabajador_estado, t.monto_a_transferir AS pago_trabajador_monto,
               t.disponible_desde AS pago_trabajador_disponible, t.transferido_en AS pago_trabajador_transferido_en,
-              (SELECT c.puntaje FROM calificaciones c WHERE c.servicio_id = s.id AND c.autor_id = s.cliente_id LIMIT 1) AS calificacion
+              (SELECT c.puntaje FROM calificaciones c WHERE c.servicio_id = s.id AND c.autor_id = s.cliente_id LIMIT 1) AS calificacion,
+              -- Quien va a la casa: el cliente no sabia ni el nombre de quien
+              -- le iba a tocar el timbre. Solo despues de que el aseador
+              -- acepta, y solo para el cliente de ese servicio.
+              w.nombre AS worker_nombre, w.telefono AS worker_telefono,
+              w.calificacion_promedio AS worker_calificacion, w.total_servicios AS worker_total_servicios,
+              -- Y al reves: el aseador necesita poder avisarle al cliente que
+              -- esta en la puerta. Solo ve los servicios que ya son suyos.
+              cl.nombre AS cliente_nombre, cl.telefono AS cliente_telefono
        FROM servicios s LEFT JOIN transferencias_trabajador t ON t.servicio_id = s.id AND s.worker_id = $1
+       LEFT JOIN usuarios w ON w.id = s.worker_id
+       JOIN usuarios cl ON cl.id = s.cliente_id
        WHERE s.${col}=$1 ORDER BY s.id DESC`, [req.usuario.id]);
     res.json(r.rows);
   } catch(e) { fallo(res, e, 'listar mis servicios'); }
@@ -875,6 +885,43 @@ app.post('/api/servicios/:id/reclamo', verificarToken, exigirRol('cliente'), asy
     }
     res.json({ mensaje: 'Recibimos tu reclamo. Tu pago queda retenido y te contactaremos para resolverlo; si el servicio no se realizó, te devolvemos el dinero.', servicio: r.servicio });
   } catch(e) { fallo(res, e, 'registrar el reclamo'); }
+});
+
+// El cliente se arrepiente antes de que alguien tome el trabajo. Si ya pago,
+// la devolucion se inicia sola en Flow, igual que cuando nadie llega.
+app.post('/api/servicios/:id/cancelar', verificarToken, exigirRol('cliente'), async (req, res) => {
+  try {
+    const r = await pagosTrabajador.enTransaccion(pool, (db) =>
+      pagosTrabajador.cancelarServicio(db, Number(req.params.id), req.usuario.id));
+    if (r.error) return res.status(r.status).json({ error: r.error });
+    if (!r.pago) return res.json({ mensaje: 'Cancelamos tu solicitud. No te cobramos nada.', servicio: r.servicio });
+
+    if (!FLOW_CONFIGURADO) {
+      await notificar(await idsAdmins(), 'reembolso', `Devolución pendiente del servicio #${r.servicio.id}`,
+        `El cliente canceló y hay que devolverle ${pesos(r.pago.monto_total)} a mano en el panel de Flow: orden ${r.pago.flow_order}.`,
+        { servicio_id: r.servicio.id });
+      return res.json({ mensaje: 'Cancelamos tu servicio. Te contactaremos para devolverte el dinero.', servicio: r.servicio });
+    }
+    const refundOrder = `ASEADA-CANCELA-${r.servicio.id}-${Date.now()}`;
+    try {
+      const refund = await flowPost('/refund/create', {
+        refundCommerceOrder: refundOrder,
+        receiverEmail: req.usuario.email,
+        amount: r.pago.monto_total,
+        urlCallBack: `${PUBLIC_URL}/pagos/flow/reembolso-confirmacion`,
+        commerceTrxId: r.pago.flow_order || ''
+      });
+      await pool.query('UPDATE pagos SET flow_refund_token=$1, flow_refund_order=$2 WHERE id=$3',
+        [refund.token, refundOrder, r.pago.id]);
+    } catch (error) {
+      console.error(`[aseada] refund/create fallo al cancelar el servicio #${r.servicio.id}:`, error.message);
+      await notificar(await idsAdmins(), 'reembolso', `Devolución pendiente del servicio #${r.servicio.id}`,
+        `Flow no aceptó la devolución (${error.message}). Hazla a mano por ${pesos(r.pago.monto_total)}: orden ${r.pago.flow_order}.`,
+        { servicio_id: r.servicio.id });
+      return res.json({ mensaje: 'Cancelamos tu servicio. Un administrador revisará tu devolución.', servicio: r.servicio });
+    }
+    res.json({ mensaje: `Cancelamos tu servicio. Te devolvemos ${pesos(r.pago.monto_total)} en máximo 72 horas; Flow te enviará un correo para confirmarlo.`, servicio: r.servicio });
+  } catch(e) { fallo(res, e, 'cancelar el servicio'); }
 });
 
 app.post('/api/servicios/:id/calificar', verificarToken, exigirRol('cliente'), async (req, res) => {
@@ -1246,6 +1293,24 @@ app.post('/api/admin/usuarios/restablecer-clave', verificarToken, exigirRol('adm
   } catch(e) { fallo(res, e, 'restablecer la contraseña'); }
 });
 
+// Corregir el propio nombre y telefono. El email no se cambia: identifica la
+// cuenta en el login y en el correo de soporte.
+app.post('/api/usuarios/perfil', verificarToken, async (req, res) => {
+  try {
+    const nombre = String(req.body?.nombre ?? '').trim();
+    const telefono = String(req.body?.telefono ?? '').trim();
+    if (nombre.length < 2) return res.status(400).json({ error: 'Escribe tu nombre' });
+    if (nombre.length > 120) return res.status(400).json({ error: 'El nombre es demasiado largo' });
+    if (telefono && !/^\+?[\d\s-]{8,20}$/.test(telefono)) {
+      return res.status(400).json({ error: 'Revisa el teléfono: solo números, espacios y un + al inicio' });
+    }
+    const { rows: [u] } = await pool.query(
+      'UPDATE usuarios SET nombre=$2, telefono=$3 WHERE id=$1 RETURNING id,nombre,email,rol,telefono,activo',
+      [req.usuario.id, nombre, telefono]);
+    res.json({ mensaje: 'Listo, actualizamos tus datos.', usuario: u });
+  } catch(e) { fallo(res, e, 'guardar el perfil'); }
+});
+
 // Con limite de intentos: con una sesion robada no se puede adivinar la
 // contraseña actual a fuerza de probar.
 app.post('/api/usuarios/cambiar-clave', limitarIntentos, verificarToken, async (req, res) => {
@@ -1411,7 +1476,12 @@ app.get('/api/pagos', verificarToken, async (req, res) => {
 // sin sesion: exponia los comentarios de todos.
 app.get('/api/calificaciones', verificarToken, async (req, res) => {
   try {
-    const r = await pool.query('SELECT * FROM calificaciones WHERE autor_id=$1 OR destinatario_id=$1 ORDER BY id DESC', [req.usuario.id]);
+    // Las recibidas traen el comentario y la fecha: es lo que el aseador
+    // quiere leer de su propio trabajo. Sin el nombre de quien califico, para
+    // que una mala nota no se le pueda cobrar a nadie.
+    const r = await pool.query(
+      `SELECT c.*, (c.destinatario_id = $1) AS recibida
+       FROM calificaciones c WHERE c.autor_id=$1 OR c.destinatario_id=$1 ORDER BY c.id DESC`, [req.usuario.id]);
     res.json(r.rows);
   } catch(e) { fallo(res, e, 'listar las calificaciones'); }
 });
@@ -1481,7 +1551,10 @@ app.post('/api/push-token', verificarToken, exigirRol('worker'), async (req, res
   } catch(e) { fallo(res, e, 'guardar el token de notificaciones'); }
 });
 
-app.get('/api/disponibilidad', async (req, res) => {
+// Con sesion: son los horarios y nombres de los aseadores. Hoy la tabla esta
+// vacia (nada la escribe todavia), pero una ruta publica que los exponga el
+// dia que se llene no es algo que descubrir despues.
+app.get('/api/disponibilidad', verificarToken, async (req, res) => {
   try { const r = await pool.query("SELECT d.*,u.nombre as worker_nombre,u.calificacion_promedio FROM disponibilidad d JOIN usuarios u ON d.worker_id=u.id WHERE u.activo=true ORDER BY d.id DESC"); res.json(r.rows); }
   catch(e) { fallo(res, e, 'listar la disponibilidad'); }
 });

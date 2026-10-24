@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, TextInput, Linking } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { api, esSesionVencida } from '../../constants/api';
 import { exigirSesion, volverAlLogin } from '../../constants/auth';
@@ -79,6 +79,21 @@ export default function HistorialCliente() {
       setReclamando(null);
       setMotivo('');
       setDetalle('');
+      await cargar();
+    });
+  };
+
+  const cancelar = async (item: any) => {
+    const pagado = item.estado !== 'pendiente_pago';
+    const ok = await confirmar('¿Cancelar este servicio?',
+      pagado
+        ? 'Todavía no hay un aseador asignado, así que te devolvemos el dinero en máximo 72 horas.'
+        : 'No te hemos cobrado nada, así que no hay nada que devolver.',
+      'Sí, cancelar');
+    if (!ok) return;
+    await conSesion(item.id, async (token) => {
+      const res = await api.post(`/api/servicios/${item.id}/cancelar`, {}, token);
+      avisar('Servicio cancelado', res.mensaje);
       await cargar();
     });
   };
@@ -164,6 +179,22 @@ export default function HistorialCliente() {
                 <Text style={styles.cardText}>🏠 {item.metros} m²</Text>
                 <Text style={styles.cardPrice}>${Number(item.total_cliente || 0).toLocaleString('es-CL')}</Text>
 
+                {!!item.worker_nombre && (
+                  <View style={styles.aseador}>
+                    <Text style={styles.aseadorNombre}>
+                      🧑‍🔧 {item.worker_nombre}
+                      {Number(item.worker_total_servicios) > 0 && ` · ★ ${Number(item.worker_calificacion).toFixed(1)} (${item.worker_total_servicios} servicios)`}
+                    </Text>
+                    {item.worker_telefono?.trim() ? (
+                      <Text style={styles.aseadorContacto} onPress={() => Linking.openURL(`tel:${item.worker_telefono}`)}>
+                        📞 {item.worker_telefono}
+                      </Text>
+                    ) : (
+                      <Text style={styles.aseadorContacto}>Sin teléfono registrado</Text>
+                    )}
+                  </View>
+                )}
+
                 {item.estado === 'pendiente_pago' && (
                   <TouchableOpacity style={styles.btnPrincipal} onPress={() => pagar(item.id)} disabled={cargando}>
                     {cargando ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTexto}>Pagar ahora</Text>}
@@ -220,6 +251,12 @@ export default function HistorialCliente() {
                   <Text style={styles.nota}>Estamos revisando tu reclamo. Tu pago sigue retenido y no se le libera al trabajador hasta resolverlo.</Text>
                 )}
 
+                {['pendiente_pago', 'buscando_worker'].includes(item.estado) && (
+                  <TouchableOpacity style={styles.btnSecundario} onPress={() => cancelar(item)} disabled={cargando}>
+                    <Text style={styles.btnSecundarioTexto}>Cancelar servicio</Text>
+                  </TouchableOpacity>
+                )}
+
                 {RECLAMABLES.includes(item.estado) && reclamando !== item.id && (
                   <TouchableOpacity style={styles.btnSecundario} onPress={() => setReclamando(item.id)}>
                     <Text style={styles.btnSecundarioTexto}>Reportar un problema</Text>
@@ -270,6 +307,9 @@ const styles = StyleSheet.create({
   btnPrincipal: { backgroundColor: '#6C63FF', borderRadius: 10, padding: 13, alignItems: 'center', marginTop: 12 },
   reagendo: { marginTop: 4 },
   btnManana: { marginTop: 8 },
+  aseador: { backgroundColor: '#f5f6ff', borderRadius: 10, padding: 10, marginTop: 10 },
+  aseadorNombre: { fontSize: 14, fontWeight: '600', color: '#2d2a6e' },
+  aseadorContacto: { fontSize: 14, color: '#4b44c9', marginTop: 3 },
   calificar: { marginTop: 4 },
   estrellas: { flexDirection: 'row', gap: 6, marginTop: 6 },
   estrella: { fontSize: 30, color: '#f5a524' },

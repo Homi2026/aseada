@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
 import { api } from '../../constants/api';
 import { obtenerSesion } from '../../constants/auth';
 import { avisar } from '../../constants/dialogos';
 import { CambiarClave } from '../../components/cambiar-clave';
+import { MisCalificaciones } from '../../components/mis-calificaciones';
+import { EditarPerfil } from '../../components/editar-perfil';
 
 const TIPOS_CUENTA = [
   { id: 'vista', texto: 'Cuenta vista / RUT' },
@@ -13,6 +15,7 @@ const TIPOS_CUENTA = [
 ];
 
 export default function PerfilWorker() {
+  const [usuario, setUsuario] = useState<any>(null);
   const [comuna, setComuna] = useState('');
   const [experiencia, setExperiencia] = useState('');
   const [rut, setRut] = useState('');
@@ -21,6 +24,8 @@ export default function PerfilWorker() {
   const [numeroCuenta, setNumeroCuenta] = useState('');
   const [acepta, setAcepta] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => { obtenerSesion().then(({ usuario }) => setUsuario(usuario)); }, []);
 
   const guardar = async () => {
     if (!acepta) return avisar('Falta confirmar', 'Debes aceptar la modalidad de prestador independiente.');
@@ -77,6 +82,13 @@ export default function PerfilWorker() {
       <TouchableOpacity style={[styles.button, !acepta && styles.disabled]} onPress={guardar} disabled={!acepta || loading}>
         <Text style={styles.buttonText}>{loading ? 'Guardando...' : 'Guardar perfil profesional'}</Text>
       </TouchableOpacity>
+      {!!usuario && (
+        <View style={{ marginTop: 24 }}>
+          <EditarPerfil usuario={usuario} onGuardado={setUsuario} color="#1f6b4f" />
+        </View>
+      )}
+
+      <MisCalificaciones />
       <View style={{ marginTop: 24 }}>
         <CambiarClave color="#1f6b4f" />
       </View>

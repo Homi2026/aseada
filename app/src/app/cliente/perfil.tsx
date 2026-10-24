@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { CambiarClave } from '../../components/cambiar-clave';
+import { EditarPerfil } from '../../components/editar-perfil';
 import { cerrarSesion, obtenerSesion, volverAlLogin } from '../../constants/auth';
 
 export default function PerfilCliente() {
@@ -32,10 +33,14 @@ export default function PerfilCliente() {
         <Text style={styles.label}>Email</Text>
         <Text style={styles.value}>{usuario?.email || 'Sin email'}</Text>
 
+        <Text style={styles.label}>Teléfono</Text>
+        <Text style={styles.value}>{usuario?.telefono?.trim() || 'Sin teléfono'}</Text>
+
         <Text style={styles.label}>Rol</Text>
         <Text style={styles.value}>{usuario?.rol === 'worker' ? 'Aseador' : 'Cliente'}</Text>
       </View>
 
+      {!!usuario && <EditarPerfil usuario={usuario} onGuardado={setUsuario} />}
       <CambiarClave />
 
       <TouchableOpacity style={styles.buttonSecondary} onPress={salir}>

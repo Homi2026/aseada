@@ -5,7 +5,7 @@ import { api, esSesionVencida } from '../../constants/api';
 import { obtenerSesion, volverAlLogin } from '../../constants/auth';
 import { avisar, confirmar } from '../../constants/dialogos';
 import { GARANTIA, irAPagar } from '../../constants/pagos';
-import { TAMANIOS } from '../../constants/tamanios';
+import { TAMANIOS, horasTexto } from '../../constants/tamanios';
 
 const PLAGAS = [
   { id: 'insectos', label: 'Insectos', detail: 'Cucarachas, hormigas y arañas', icono: '🪳' },
@@ -140,7 +140,7 @@ export default function Solicitar() {
       {TAMANIOS.map((t) => (
         <TouchableOpacity key={t.metros} style={[styles.opcion, tamanio?.metros === t.metros && styles.opcionActiva]} onPress={() => seleccionarTamanio(t)}>
           <Text style={styles.opcionIcono}>{t.icono}</Text>
-          <View><Text style={[styles.opcionTexto, tamanio?.metros === t.metros && styles.opcionTextoActivo]}>{t.label}</Text><Text style={styles.detalle}>{t.horas} horas incluidas</Text></View>
+          <View><Text style={[styles.opcionTexto, tamanio?.metros === t.metros && styles.opcionTextoActivo]}>{t.label}</Text><Text style={styles.detalle}>{horasTexto(t.horas)} horas incluidas</Text></View>
         </TouchableOpacity>
       ))}
 
@@ -170,7 +170,7 @@ export default function Solicitar() {
       {precio && (
         <View style={styles.resumen}>
           <Text style={styles.resumenTitulo}>{tipoServicio === 'fumigacion' ? 'Fumigación referencial' : 'Resumen de precio'}</Text>
-          <View style={styles.resumenFila}><Text>{tipoServicio === 'fumigacion' ? 'Tratamiento base' : `Servicio base (${tamanio?.horas} hrs)`}</Text><Text>${precio.precio_base?.toLocaleString()}</Text></View>
+          <View style={styles.resumenFila}><Text>{tipoServicio === 'fumigacion' ? 'Tratamiento base' : `Servicio base (${horasTexto(tamanio?.horas ?? 0)} hrs)`}</Text><Text>${precio.precio_base?.toLocaleString()}</Text></View>
           {precio.extra > 0 && <View style={styles.resumenFila}><Text>Horas extra</Text><Text>${precio.extra?.toLocaleString()}</Text></View>}
           <View style={styles.resumenFila}><Text>Comisión plataforma</Text><Text>${precio.comision?.toLocaleString()}</Text></View>
           <View style={styles.resumenFila}><Text>IVA (19% comisión)</Text><Text>${precio.iva?.toLocaleString()}</Text></View>

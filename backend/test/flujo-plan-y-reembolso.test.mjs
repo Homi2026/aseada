@@ -77,12 +77,18 @@ const DIA_MS = 24 * 60 * 60 * 1000;
 const INICIO = diaEnChile(Date.now() + 5 * DIA_MS);
 const VISITAS_ESPERADAS = [0, 7, 14, 21].map((d) => diaEnChile(Date.parse(`${INICIO}T12:00:00Z`) + d * DIA_MS));
 
+// Precio de una visita del plan mensual para 50 m2 sin materiales. Fija a mano
+// el valor de la tabla de precios: si la tabla cambia, esta prueba tiene que
+// cambiar con ella, que es justamente lo que queremos notar.
+const VISITA_PLAN = 34190;
+const TOTAL_PLAN = 4 * VISITA_PLAN;
+
 test('un plan: cotiza, cobra en Flow, crea las 4 visitas programadas y no duplica al confirmar dos veces', async () => {
   const e = await escenario();
   await conServidor(async (base) => {
     const cotizacion = await post(base, '/api/planes/cotizar', { tipo: 'mensual', metros: 50, con_materiales: false }, e.tokenCliente);
     assert.equal(cotizacion.status, 200);
-    assert.equal((await cotizacion.json()).total, 147800);
+    assert.equal((await cotizacion.json()).total, TOTAL_PLAN);
 
     const compra = await post(base, '/api/planes', {
       tipo: 'mensual', metros: 50, con_materiales: false, direccion: 'Calle 1', fecha_inicio: INICIO
@@ -92,7 +98,7 @@ test('un plan: cotiza, cobra en Flow, crea las 4 visitas programadas y no duplic
     assert.match(cobro.url_pago, /token=tok-plan-1/);
 
     const pedido = pedidosAFlow.find((p) => p.ruta === '/payment/create');
-    assert.match(pedido.cuerpo, /amount=147800/, 'Flow cobra el total del plan');
+    assert.match(pedido.cuerpo, new RegExp(`amount=${TOTAL_PLAN}`), 'Flow cobra el total del plan');
     assert.match(pedido.cuerpo, /pagos%2Fflow%2Fplan%2Fconfirmacion|pagos\/flow\/plan\/confirmacion/, 'Flow avisa al webhook del plan');
 
     const confirmacion = await post(base, '/pagos/flow/plan/confirmacion', { token: 'tok-plan-1' });
@@ -101,7 +107,7 @@ test('un plan: cotiza, cobra en Flow, crea las 4 visitas programadas y no duplic
 
     const { rows: [plan] } = await e.db.query("SELECT estado, total FROM planes WHERE flow_token='tok-plan-1'");
     assert.equal(plan.estado, 'activo');
-    assert.equal(plan.total, 147800);
+    assert.equal(plan.total, TOTAL_PLAN);
 
     const { rows: visitas } = await e.db.query(
       `SELECT estado, numero_visita, (fecha_servicio AT TIME ZONE 'America/Santiago')::date::text AS dia
@@ -113,7 +119,7 @@ test('un plan: cotiza, cobra en Flow, crea las 4 visitas programadas y no duplic
     const { rows: [pagos] } = await e.db.query(
       "SELECT COUNT(*)::int AS n, SUM(monto_total)::int AS monto, SUM(flow_comision)::int AS fee FROM pagos WHERE servicio_id IN (SELECT id FROM servicios WHERE plan_id IS NOT NULL)");
     assert.equal(pagos.n, 4);
-    assert.equal(pagos.monto, 147800);
+    assert.equal(pagos.monto, TOTAL_PLAN);
     assert.equal(pagos.fee, 4272, 'la comision de Flow se reparte completa entre las visitas');
   });
 });
@@ -133,7 +139,7 @@ test('una visita de plan que no llego se reembolsa por la API de Flow, y el avis
     assert.equal(reembolso.status, 200);
 
     const pedido = pedidosAFlow.find((p) => p.ruta === '/refund/create');
-    assert.match(pedido.cuerpo, /amount=36950/, 'se devuelve lo que pago esa visita');
+    assert.match(pedido.cuerpo, new RegExp(`amount=${VISITA_PLAN}`), 'se devuelve lo que pago esa visita');
     assert.match(pedido.cuerpo, /receiverEmail=cliente%40t\.cl/, 'Flow manda la confirmacion al correo del cliente');
     assert.match(pedido.cuerpo, /commerceTrxId=ASEADA-PLAN-/, 'la devolucion apunta al cobro del plan');
 
@@ -164,18 +170,18 @@ test('el admin cancela un plan: devuelve en un solo reembolso las visitas sin as
 
     const listado = await (await fetch(`${base}/api/admin/planes`, { headers: { Authorization: `Bearer ${tokenAdmin}` } })).json();
     assert.equal(listado[0].visitas_pendientes, 3);
-    assert.equal(listado[0].monto_pendiente, 3 * 36950);
+    assert.equal(listado[0].monto_pendiente, 3 * VISITA_PLAN);
 
     assert.equal((await post(base, `/api/admin/planes/${plan.id}/cancelar`, {}, e.tokenCliente)).status, 403, 'solo el admin');
     const pedidosAntes = pedidosAFlow.filter((p) => p.ruta === '/refund/create').length;
     const r = await post(base, `/api/admin/planes/${plan.id}/cancelar`, {}, tokenAdmin);
     assert.equal(r.status, 200);
     const cuerpo = await r.json();
-    assert.equal(cuerpo.monto, 3 * 36950);
+    assert.equal(cuerpo.monto, 3 * VISITA_PLAN);
 
     const reembolsos = pedidosAFlow.filter((p) => p.ruta === '/refund/create');
     assert.equal(reembolsos.length, pedidosAntes + 1, 'un solo reembolso para las 3 visitas');
-    assert.match(reembolsos.at(-1).cuerpo, new RegExp(`amount=${3 * 36950}`));
+    assert.match(reembolsos.at(-1).cuerpo, new RegExp(`amount=${3 * VISITA_PLAN}`));
 
     const { rows: estados } = await e.db.query('SELECT estado FROM servicios WHERE plan_id=$1 ORDER BY numero_visita', [plan.id]);
     assert.deepEqual(estados.map((s) => s.estado), ['en_proceso', 'reembolsado', 'reembolsado', 'reembolsado']);
@@ -188,7 +194,7 @@ test('el admin cancela un plan: devuelve en un solo reembolso las visitas sin as
     const { rows: avisos } = await e.db.query(
       "SELECT mensaje FROM notificaciones WHERE usuario_id=$1 AND titulo='Tu devolución quedó completa'", [e.cliente]);
     assert.equal(avisos.length, 1);
-    assert.match(avisos[0].mensaje, /110\.850/);
+    assert.match(avisos[0].mensaje, new RegExp((3 * VISITA_PLAN).toLocaleString('es-CL').replace('.', '\\.')));
 
     assert.equal((await post(base, `/api/admin/planes/${plan.id}/cancelar`, {}, tokenAdmin)).status, 400, 'no se cancela dos veces');
   });

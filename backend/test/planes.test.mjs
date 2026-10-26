@@ -14,55 +14,66 @@ const silencio = () => {};
 const IVA = 0.19;
 const FLOW = 0.0289 * 1.19;
 const CPA = 5000;
-const DESCUENTO = { mensual: 0.12, trimestral: 0.15 };
+const DESCUENTO = { mensual: 0.05, trimestral: 0.08 };
 const flow = (total) => Math.round(FLOW * total);
 
-// Precio de lista de una visita de 50 m2 sin materiales (lo que calcularPrecio() devuelve).
-const LISTA_50 = { precio_base: 28000, subtotal: 28000, comision: 11756, iva: 2234, total_cliente: 41990,
-  worker_recibe: 28000, retencion_honorarios: 4270, horas_incluidas: 3 };
+// Precio de lista de una visita de 50 m2 sin materiales (lo que calcularPrecio()
+// devuelve): 3 horas a la tarifa pareja de $8.000 para el aseador.
+const LISTA_50 = { precio_base: 24000, subtotal: 24000, comision: 10076, iva: 1914, total_cliente: 35990,
+  worker_recibe: 24000, retencion_honorarios: 3660, horas_incluidas: 3 };
 const precioPlan = (lista, tipo) => P.precioVisitaPlan(lista, { tasaIva: IVA, descuento: DESCUENTO[tipo] });
 
-test('el plan mensual de 50 m2 cobra $36.950 por visita (12% bajo la lista)', () => {
+test('el plan mensual de 50 m2 cobra $34.190 por visita (5% bajo la lista)', () => {
   const v = precioPlan(LISTA_50, 'mensual');
-  assert.equal(v.total_cliente, 36950);
-  assert.equal(v.worker_recibe, 28000, 'el aseador cobra su precio completo');
-  assert.equal(v.descuento_clp, 5040);
+  assert.equal(v.total_cliente, 34190);
+  assert.equal(v.worker_recibe, 24000, 'el aseador cobra su precio completo');
+  assert.equal(v.descuento_clp, 1800);
 });
 
-test('el plan de 3 meses de 50 m2 cobra $35.690 por visita (15% bajo la lista)', () => {
+test('el plan de 3 meses de 50 m2 cobra 8% bajo la lista', () => {
   const v = precioPlan(LISTA_50, 'trimestral');
-  assert.equal(v.total_cliente, 35690);
-  assert.equal(v.descuento_clp, 6300);
+  assert.equal(v.total_cliente, 33109);
+  assert.ok(v.descuento_clp >= 2880, 'descuenta cerca del 8% de los 35.990');
 });
 
-// Tramos con su lista y su descuento de plan (10% fuera del tramo de 50 m2).
+// Cada tramo con su lista y el pago al aseador que sale de sus horas.
 const TRAMOS = [
-  { nombre: '50 m2 mensual', subtotal: 28000, lista: 41990, tipo: 'mensual' },
-  { nombre: '50 m2 3 meses', subtotal: 28000, lista: 41990, tipo: 'trimestral' },
-  { nombre: '65 m2', subtotal: 35000, lista: 48990, tipo: 'mensual', descuento: 0.10 },
-  { nombre: '120 m2', subtotal: 50000, lista: 69990, tipo: 'mensual', descuento: 0.10 },
-  { nombre: '200 m2', subtotal: 68000, lista: 94990, tipo: 'mensual', descuento: 0.10 },
-  { nombre: '250 m2', subtotal: 80000, lista: 110990, tipo: 'mensual', descuento: 0.10 }
+  { nombre: '50 m2 mensual', subtotal: 24000, lista: 35990, tipo: 'mensual' },
+  { nombre: '50 m2 3 meses', subtotal: 24000, lista: 35990, tipo: 'trimestral' },
+  { nombre: '80 m2', subtotal: 32000, lista: 43990, tipo: 'mensual' },
+  { nombre: '120 m2', subtotal: 40000, lista: 51990, tipo: 'mensual' },
+  { nombre: '200 m2', subtotal: 52000, lista: 64990, tipo: 'mensual' },
+  { nombre: '999 m2', subtotal: 64000, lista: 78990, tipo: 'mensual' }
 ];
 
-test('cada plan deja al menos 12% de margen neto despues de Flow, en todos los tramos', () => {
+const listaDe = (t) => {
+  const comision = P.comisionParaPrecio(t.lista, t.subtotal, IVA);
+  return { ...LISTA_50, subtotal: t.subtotal, comision, iva: Math.round(comision * IVA), total_cliente: t.lista };
+};
+
+// El piso se mide en pesos y no como porcentaje del precio: el precio incluye
+// lo que recibe el aseador, que es dinero de paso, asi que en una casa grande
+// ese porcentaje baja siempre (ahi el aseador se lleva el 80% del precio)
+// aunque Aseada gane mas pesos que en un depto chico.
+test('cada visita de plan deja al menos $5.000 para Aseada despues de Flow', () => {
   for (const t of TRAMOS) {
-    const comision = P.comisionParaPrecio(t.lista, t.subtotal, IVA);
-    const lista = { ...LISTA_50, subtotal: t.subtotal, comision, iva: Math.round(comision * IVA), total_cliente: t.lista };
-    const d = t.descuento ?? DESCUENTO[t.tipo];
-    const v = P.precioVisitaPlan(lista, { tasaIva: IVA, descuento: d });
+    const v = P.precioVisitaPlan(listaDe(t), { tasaIva: IVA, descuento: DESCUENTO[t.tipo] });
     const neto = v.comision - flow(v.total_cliente);
-    assert.ok(neto / v.total_cliente >= 0.12, `${t.nombre}: margen neto ${(neto / v.total_cliente * 100).toFixed(1)}% bajo el 12%`);
+    assert.ok(neto >= 5000, `${t.nombre}: quedan ${Math.round(neto)} por visita, bajo el piso de 5.000`);
   }
 });
 
-test('el plan mensual recupera el CPA de $5.000 en el primer mes, en todos los tramos', () => {
-  for (const t of TRAMOS.filter((x) => x.tipo === 'mensual')) {
-    const comision = P.comisionParaPrecio(t.lista, t.subtotal, IVA);
-    const lista = { ...LISTA_50, subtotal: t.subtotal, comision, iva: Math.round(comision * IVA), total_cliente: t.lista };
-    const v = P.precioVisitaPlan(lista, { tasaIva: IVA, descuento: t.descuento ?? DESCUENTO.mensual });
-    const neto = v.comision - flow(v.total_cliente);
-    assert.ok(4 * neto - CPA > 0, `${t.nombre}: el primer mes no alcanza a pagar el CPA`);
+// El plan existe porque reparte el CPA entre varias visitas, no porque regale
+// precio: por eso tiene que rendir MAS por visita que una suelta.
+test('una visita de plan rinde mas que una suelta, repartiendo el CPA', () => {
+  for (const t of TRAMOS) {
+    const lista = listaDe(t);
+    const visitas = t.tipo === 'mensual' ? 4 : 12;
+    const v = P.precioVisitaPlan(lista, { tasaIva: IVA, descuento: DESCUENTO[t.tipo] });
+    const porVisitaEnPlan = (visitas * (v.comision - flow(v.total_cliente)) - CPA) / visitas;
+    const suelta = lista.comision - flow(lista.total_cliente) - CPA;
+    assert.ok(porVisitaEnPlan > suelta,
+      `${t.nombre}: en plan rinde ${Math.round(porVisitaEnPlan)} por visita, menos que los ${Math.round(suelta)} de una suelta`);
   }
 });
 

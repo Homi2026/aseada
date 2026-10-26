@@ -138,48 +138,38 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // ─── PRECIOS ────────────────────────────────────────────────────────────────
-// Tabla revisada (2026-09): sube el pago base al trabajador ~12% en los 3
-// tramos de lista y sube la comision de Aseada para que ambos ganen mas,
-// manteniendo el precio final bajo el promedio de mercado (ver desglose
-// entregado al dueño). Los tramos 80 y 999, sin precio publicitado, quedan
-// igual.
-const PRECIOS = {
-  50:  { sin_materiales: 28000, con_materiales: 33000 },
-  80:  { sin_materiales: 35000, con_materiales: 40000 },
-  120: { sin_materiales: 50000, con_materiales: 55000 },
-  200: { sin_materiales: 68000, con_materiales: 73000 },
-  999: { sin_materiales: 80000, con_materiales: 85000 }
-};
-const HORAS_EXTRA = { 1: 8000, 2: 15000, 3: 21000 };
+// Tabla revisada (2026-10): el precio de lista baja entre 10% y 32% para entrar
+// al rango de mercado chileno (una casa chica se cobra entre $30.000 y $40.000,
+// la hora ronda los $10.000). Lo que lo hace posible es emparejar lo que recibe
+// el aseador: antes cobraba $9.333 por hora en un depto chico y $13.600 en una
+// casa de 200 m2, sin razon que lo explicara. Ahora son TARIFA_ASEADOR_HORA
+// parejos, y las horas incluidas suben con el tamaño (ver HORAS_INCLUIDAS).
+//
+// La tarifa quedo en $8.000 y no mas abajo a proposito. El mercado paga entre
+// $8.000 y $20.000 la hora; bajo ese piso los aseadores no toman los trabajos
+// -- y el cuello de botella hoy son ellos, no los clientes. Ademas Aseada fija
+// el precio, asigna el trabajo y controla el proceso: pagar bajo el mercado
+// refuerza el argumento de subordinacion y dependencia, y una reclasificacion
+// trae sueldo minimo, cotizaciones e indemnizaciones con efecto retroactivo.
+const TARIFA_ASEADOR_HORA = 8000;
+// Lo que se le suma al aseador cuando pone los materiales, y lo que se le suma
+// al precio final por eso mismo.
+const MATERIALES_ASEADOR = 5000;
+const MATERIALES_CLIENTE = 6000;
+const PRECIOS_LISTA_ASEO = { 50: 35990, 80: 43990, 120: 51990, 200: 64990, 999: 78990 };
+// Una hora extra son 8.000 para el aseador y 10.000 para el cliente: los 2.000
+// de diferencia cubren Flow y dejan margen, igual que en el paquete base.
+const HORAS_EXTRA = { 1: 10000, 2: 20000, 3: 30000 };
+const HORAS_EXTRA_ASEADOR = { 1: 8000, 2: 16000, 3: 24000 };
 const COMISION = 0.20;
 const IVA = 0.19;
 const RETENCION_HONORARIOS = 0.1525;
-// Comision de lista: para los paquetes que se publicitan (sin materiales, sin horas
-// extra / tramo base de fumigacion), la comision se fija para que el precio final
-// termine en :990 y capture el margen revisado, sin tocar lo que recibe el
-// trabajador. Fuera de estos paquetes (con materiales, horas extra, tramos
-// superiores) se sigue usando la formula dinamica de COMISION/IVA.
-// El tramo 50 (Depto pequeño) quedo con muy poco colchon frente a un CPA que
-// varia: con comision=5874 y CPA=5000, un CPA real de 6000 ya deja perdida.
-// Se sube a 10076 para que la utilidad aguante un CPA bastante mas alto que
-// la estimacion antes de partir en rojo.
-const COMISION_LISTA_ASEO = { 50: 10076, 120: 10916, 200: 14277 };
-// La visita suelta tiene un precio de lista mas alto que el de hoy, y el plan
-// descuenta sobre esa lista. En el tramo de 50 m2 (el mas barato, donde la
-// comision ya es alta) el recargo es 5% y el descuento de plan 12% mensual o
-// 15% trimestral; en los demas tramos el recargo es ~11% y el descuento 10%,
-// para que el plan cobre lo mismo que hoy y la rentabilidad no baje. El
-// aseador cobra lo mismo en todos los casos.
-const RECARGO_LISTA = { 50: 0.05 };
-const RECARGO_LISTA_POR_DEFECTO = 1 / 0.9 - 1;
-const DESCUENTO_PLAN = { mensual: { 50: 0.12 }, trimestral: { 50: 0.15 } };
-const DESCUENTO_PLAN_POR_DEFECTO = 0.10;
-const descuentoPlan = (tipo, metros) => (metros <= 50 ? DESCUENTO_PLAN[tipo][50] : DESCUENTO_PLAN_POR_DEFECTO);
-// Precio final de lista: el :990 mas cercano que cubra el precio de hoy con su recargo.
-const aPrecioLista = (precioDeHoy, tramo) => {
-  const minimo = precioDeHoy * (1 + (RECARGO_LISTA[tramo] ?? RECARGO_LISTA_POR_DEFECTO));
-  return Math.ceil((minimo - 990) / 1000) * 1000 + 990;
-};
+// El descuento de los planes bajo de 12-15% a 5-8%: con la lista ya recortada
+// no queda espacio para mas. Igual el plan le conviene a Aseada mas que una
+// visita suelta, porque el CPA de $5.000 se paga una vez y se reparte entre 4 o
+// 12 visitas, no porque se regale precio.
+const DESCUENTO_PLAN = { mensual: 0.05, trimestral: 0.08 };
+const descuentoPlan = (tipo) => DESCUENTO_PLAN[tipo] ?? DESCUENTO_PLAN.mensual;
 // El tramo 50 de fumigacion llevaba una comision de 15958 (un 32% del base)
 // mientras el resto de los tramos usa el 20% dinamico, y eso daba vuelta la
 // escalera: un depto de 40 m2 pagaba $64.990 y una casa de 100 m2 $61.776.
@@ -194,7 +184,11 @@ const PRECIOS_FUMIGACION = {
   roedores: { 50: 56000, 100: 59900, 200: 79900, 999: 99900 },
   mixto: { 50: 59900, 100: 69900, 200: 89900, 999: 119900 }
 };
-const HORAS_INCLUIDAS = { 50: 3, 80: 4, 120: 4, 200: 5, 999: 6 };
+// Las horas suben con el tamaño: antes 80 y 120 m2 traian las mismas 4 horas,
+// aunque una casa de 120 es la mitad mas grande. De aca sale lo que recibe el
+// aseador (horas x TARIFA_ASEADOR_HORA), asi que la escalera de pago tambien
+// queda pareja.
+const HORAS_INCLUIDAS = { 50: 3, 80: 4, 120: 5, 200: 6.5, 999: 8 };
 
 function horasIncluidas(metros) {
   const limite = Object.keys(HORAS_INCLUIDAS).map(Number).sort((a, b) => a - b).find((valor) => metros <= valor) || 999;
@@ -215,15 +209,16 @@ function calcularPrecio(metros, horas_extra, con_materiales, tipo_servicio = 'as
   // Sobre el ultimo tramo (999) no caia en ninguno y el precio quedaba en 0:
   // el cliente veia "Pagar $0" y el aseador un trabajo sin pago. Ahora se cobra
   // el tramo mas alto, igual que ya hacia la tabla de fumigacion.
-  const tramosAseo = Object.keys(PRECIOS).map(Number).sort((a, b) => a - b);
+  const tramosAseo = Object.keys(PRECIOS_LISTA_ASEO).map(Number).sort((a, b) => a - b);
   const limiteUsado = tramosAseo.find((limite) => metros <= limite) ?? tramosAseo[tramosAseo.length - 1];
-  const precio_base = PRECIOS[limiteUsado][con_materiales ? 'con_materiales' : 'sin_materiales'];
-  const extra = HORAS_EXTRA[horas_extra] || 0;
+  // Lo que recibe el aseador sale de las horas del paquete, no de una tabla
+  // aparte: asi la tarifa por hora queda pareja en todos los tramos.
+  const precio_base = HORAS_INCLUIDAS[limiteUsado] * TARIFA_ASEADOR_HORA + (con_materiales ? MATERIALES_ASEADOR : 0);
+  const extra = HORAS_EXTRA_ASEADOR[horas_extra] || 0;
   const subtotal = precio_base + extra;
-  const comisionDeHoy = (!con_materiales && !extra) ? COMISION_LISTA_ASEO[limiteUsado] : undefined;
-  const cDeHoy = comisionDeHoy ?? Math.round(subtotal * COMISION);
-  const totalDeHoy = subtotal + cDeHoy + Math.round(cDeHoy * IVA);
-  const total_lista = aPrecioLista(totalDeHoy, limiteUsado);
+  const total_lista = PRECIOS_LISTA_ASEO[limiteUsado]
+    + (con_materiales ? MATERIALES_CLIENTE : 0)
+    + (HORAS_EXTRA[horas_extra] || 0);
   const comision = pagosTrabajador.comisionParaPrecio(total_lista, subtotal, IVA);
   const iva = Math.round(comision * IVA);
   const total_cliente = subtotal + comision + iva;
@@ -693,7 +688,7 @@ app.post('/api/servicios', verificarToken, async (req, res) => {
 // Un plan cobra por adelantado varias visitas semanales. Las visitas se crean
 // al confirmar el cobro y se publican a la bolsa el dia que les toca.
 const precioVisitaDelPlan = (plan) =>
-  pagosTrabajador.precioVisitaPlan(calcularPrecio(Number(plan.metros), 0, Boolean(plan.con_materiales), 'aseo'), { tasaIva: IVA, descuento: descuentoPlan(plan.tipo, Number(plan.metros)) });
+  pagosTrabajador.precioVisitaPlan(calcularPrecio(Number(plan.metros), 0, Boolean(plan.con_materiales), 'aseo'), { tasaIva: IVA, descuento: descuentoPlan(plan.tipo) });
 
 function cotizarPlan({ tipo, metros, con_materiales = false }) {
   const visitas = pagosTrabajador.VISITAS_POR_PLAN[tipo];

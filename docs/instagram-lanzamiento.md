@@ -65,9 +65,9 @@ Link en la bio para agendar.
 
 Esto es lo que cuesta. Nada más.
 
-🏠 Depto hasta 50 m² · 3 horas · $41.990
-🏡 Casa hasta 120 m² · 4 horas · $69.990
-🏘️ Casa hasta 200 m² · 5 horas · $94.990
+🏠 Depto hasta 50 m² · 3 horas · $35.990
+🏡 Casa hasta 120 m² · 5 horas · $51.990
+🏘️ Casa hasta 200 m² · 6,5 horas · $64.990
 
 El precio que ves es el que pagas. Lo sabes antes de confirmar, no después.
 
@@ -101,10 +101,10 @@ Eso es todo. Link en la bio.
 
 Si necesitas aseo todas las semanas, sale más barato.
 
-Plan mensual: 4 visitas a $36.950 cada una
-Plan 3 meses: 12 visitas a $35.690 cada una
+Plan mensual: 4 visitas a $34.190 cada una
+Plan 3 meses: 12 visitas a $33.109 cada una
 
-(Valores para un departamento de hasta 50 m². Una visita suelta cuesta $41.990.)
+(Valores para un departamento de hasta 50 m². Una visita suelta cuesta $35.990.)
 
 Cada visita mantiene la misma garantía: el pago queda retenido hasta que la
 confirmas.

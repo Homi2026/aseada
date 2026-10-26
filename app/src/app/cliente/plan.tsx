@@ -4,7 +4,7 @@ import { api, esSesionVencida } from '../../constants/api';
 import { exigirSesion, volverAlLogin } from '../../constants/auth';
 import { avisar, confirmar } from '../../constants/dialogos';
 import { GARANTIA, abrirPago } from '../../constants/pagos';
-import { TAMANIOS } from '../../constants/tamanios';
+import { TAMANIOS, horasTexto } from '../../constants/tamanios';
 
 const TIPOS = [
   { id: 'mensual', label: 'Mensual', detalle: '4 visitas, una por semana' },
@@ -87,7 +87,7 @@ export default function Plan() {
       {TAMANIOS.map((t) => (
         <TouchableOpacity key={t.metros} style={[styles.opcion, tamanio?.metros === t.metros && styles.activo]} onPress={() => setTamanio(t)}>
           <Text style={styles.icono}>{t.icono}</Text>
-          <View><Text style={[styles.opcionTexto, tamanio?.metros === t.metros && styles.textoActivo]}>{t.label}</Text><Text style={styles.detalle}>{t.horas} horas por visita</Text></View>
+          <View><Text style={[styles.opcionTexto, tamanio?.metros === t.metros && styles.textoActivo]}>{t.label}</Text><Text style={styles.detalle}>{horasTexto(t.horas)} horas por visita</Text></View>
         </TouchableOpacity>
       ))}
 

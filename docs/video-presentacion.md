@@ -26,6 +26,17 @@ No hace falta equipo.
 Grabar el guion entero tres veces seguidas y quedarse con la mejor. Casi
 siempre es la tercera.
 
+## Teleprompter
+
+El guion de más abajo también está en un teleprompter que sube solo a la
+velocidad a la que se habla, con las dos versiones, control de ritmo y la
+lista de chequeo antes de grabar:
+
+https://claude.ai/artifact/VxfeRVyyjzFRfjSJZc88L2
+
+Se pone detrás o debajo del teléfono que filma, lo más cerca del lente que se
+pueda, para que los ojos queden mirando a la cámara y no a un costado.
+
 ## El guion
 
 Está escrito para decirlo, no para leerlo. Si algo suena raro en su boca,

@@ -43,7 +43,7 @@ export const RemotionRoot: React.FC = () => {
           id="Presentadora"
           component={EscenaPresentadora}
           durationInFrames={DURACION_CLIP}
-          defaultProps={{ nombre: "[tu nombre]", segundoDelPrecio: 14 }}
+          defaultProps={{ nombre: "[tu nombre]", segundoDelPrecio: 6 }}
           {...FORMATO}
         />
         <Composition

@@ -12,22 +12,32 @@ Sitio: https://web-production-d6ba2.up.railway.app
 
 ## Calendario
 
-Del domingo 25 al sábado 31 de octubre. Las horas apuntan a cuando la gente
-está en el teléfono: tarde-noche entre semana, media mañana el sábado.
+Del lunes 26 de octubre al domingo 1 de noviembre. Las horas apuntan a cuando
+la gente está en el teléfono: tarde-noche entre semana, media mañana el fin de
+semana.
 
 | Día | Fecha | Hora | Publicación | Archivo |
 |---|---|---|---|---|
-| 1 | Dom 25 oct | 19:00 | Lanzamiento | `1-lanzamiento.png` |
-| 2 | Lun 26 oct | 13:00 | Precios claros | `2-precios.png` |
-| 3 | Mar 27 oct | 19:00 | Pago protegido | `3-pago-protegido.png` |
-| 4 | Mié 28 oct | 13:00 | Cómo funciona | `4-como-funciona.png` |
-| 5 | Jue 29 oct | 19:00 | Plan semanal | `5-plan-semanal.png` |
-| 6 | Vie 30 oct | 19:00 | Si nadie llega | `6-si-nadie-llega.png` |
-| 7 | Sáb 31 oct | 11:00 | Convocatoria a aseadores | `7-aseadores.png` |
+| 1 | Lun 26 oct | 19:00 | Lanzamiento | `1-lanzamiento.png` |
+| 2 | Mar 27 oct | 13:00 | Precios claros | `2-precios.png` |
+| 3 | Mié 28 oct | 19:00 | Pago protegido | `3-pago-protegido.png` |
+| 4 | Jue 29 oct | 13:00 | Cómo funciona | `4-como-funciona.png` |
+| 5 | Vie 30 oct | 19:00 | Plan semanal | `5-plan-semanal.png` |
+| 6 | Sáb 31 oct | 11:00 | Si nadie llega | `6-si-nadie-llega.png` |
+| 7 | Dom 1 nov | 11:00 | Convocatoria a aseadores | `7-aseadores.png` |
 
 Si prefieres otras fechas, corre el calendario completo: el orden importa más
 que los días exactos. El día 1 tiene que ir primero porque anuncia el sitio, y
 el día 7 al final porque convoca aseadores una vez que ya se vio la propuesta.
+
+## Las imágenes también están en línea
+
+Cada pieza tiene una dirección pública en el sitio, para programarlas desde
+Metricool o compartirlas sin adjuntar archivos:
+
+https://web-production-d6ba2.up.railway.app/instagram/1-lanzamiento.png
+
+Cambia el nombre del archivo al final por el de cada día.
 
 ## Hashtags
 

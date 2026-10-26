@@ -42,3 +42,30 @@ publicado, hay que borrarlo y subirlo de nuevo.
 Es a propósito: la música se elige en Instagram al subir el Reel, desde su
 catálogo, que es el único que no da problemas de derechos. Pero hay que
 ponerle alguna, porque un Reel mudo se muestra menos.
+
+## El video de presentación (`Presentacion`)
+
+Es el video con una persona contando qué es Aseada. **El montaje ya está
+hecho; falta sólo la toma.** La portada, el rótulo con el nombre, el precio
+que aparece en pantalla y el cierre están armados y probados.
+
+Para terminarlo:
+
+1. Graba el clip siguiendo [docs/video-presentacion.md](../../docs/video-presentacion.md).
+   El teleprompter con el guion está enlazado ahí.
+2. Deja el archivo en `tools/video-instagram/public/presentadora.mp4`.
+3. En `src/Presentacion.tsx` ajusta dos cosas:
+   - `DURACION_CLIP`: los cuadros que dura tu toma (segundos × 30).
+   - `segundoDelPrecio`: el segundo del clip en que ella dice el monto, para
+     que el precio aparezca en pantalla justo ahí.
+4. En la misma línea, cambia `nombre="[tu nombre]"` por su nombre.
+5. Renderiza:
+
+       npx remotion render Presentacion ~/Documents/aseada-instagram/video-presentacion.mp4
+
+Mientras el archivo no exista, la composición muestra un cartel que dice
+dónde ponerlo, en vez de fallar. Eso es a propósito: así se puede trabajar en
+el resto del video antes de tener la grabación.
+
+Este video **sí lleva el audio de ella**, así que al subirlo a Instagram no le
+pongas música encima — o déjala muy abajo, para que no le tape la voz.

@@ -3,6 +3,14 @@ import { ComoFunciona, DURACION_TOTAL } from "./ComoFunciona";
 import { EscenaCierre } from "./EscenaCierre";
 import { EscenaGancho } from "./EscenaGancho";
 import { EscenaPaso } from "./EscenaPaso";
+import { EscenaPortada } from "./EscenaPortada";
+import { EscenaPresentadora } from "./EscenaPresentadora";
+import {
+  DURACION_CLIP,
+  DURACION_PORTADA,
+  DURACION_PRESENTACION,
+  Presentacion,
+} from "./Presentacion";
 
 // Vertical, como lo pide un Reel o una historia.
 const FORMATO = { width: 1080, height: 1920, fps: 30 } as const;
@@ -17,7 +25,27 @@ export const RemotionRoot: React.FC = () => {
         {...FORMATO}
       />
 
+      <Composition
+        id="Presentacion"
+        component={Presentacion}
+        durationInFrames={DURACION_PRESENTACION}
+        {...FORMATO}
+      />
+
       <Folder name="Escenas">
+        <Composition
+          id="Portada"
+          component={EscenaPortada}
+          durationInFrames={DURACION_PORTADA}
+          {...FORMATO}
+        />
+        <Composition
+          id="Presentadora"
+          component={EscenaPresentadora}
+          durationInFrames={DURACION_CLIP}
+          defaultProps={{ nombre: "[tu nombre]", segundoDelPrecio: 14 }}
+          {...FORMATO}
+        />
         <Composition
           id="Gancho"
           component={EscenaGancho}

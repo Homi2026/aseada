@@ -99,6 +99,19 @@ tomas, estos son los cortes que valen la pena:
 Los planos 2 y 3 se superponen sobre su voz. Si no da el tiempo, el plano 1
 solo basta.
 
+## El montaje ya está hecho
+
+No hay que editar el video después de grabarlo. En
+`tools/video-instagram` está la composición `Presentacion`, que ya trae la
+portada de Aseada, un rótulo con el nombre de quien habla, el precio
+apareciendo en pantalla en el momento en que ella lo dice, y el cierre con las
+tres garantías.
+
+Lo único que falta es la toma. Se deja el archivo en
+`tools/video-instagram/public/presentadora.mp4`, se ajustan el largo y el
+segundo del precio, y se renderiza. Los pasos exactos están en el README de esa
+carpeta.
+
 ## Después de grabar
 
 - **Subtítulos, sin excepción.** La mayoría ve Instagram en silencio. Instagram

@@ -161,6 +161,75 @@ Los diseños viven en el lienzo "Lanzamiento Aseada · Instagram". Después de
 editarlos ahí, se vuelven a generar los PNG corriendo el script de exportación.
 Pídemelo y lo hago.
 
+## Segunda semana: carrusel, historias y video
+
+La primera semana son siete publicaciones sueltas. Lo que sigue es material
+para la semana del 2 al 8 de noviembre, con tres formatos que la primera
+semana no tiene.
+
+### El carrusel didáctico (5 láminas)
+
+`9-carrusel-1-tapa.png` a `9-carrusel-5-cierre.png`, en ese orden, en una
+sola publicación. El texto está en `9-carrusel.txt`.
+
+Un carrusel se mide distinto a una foto: Instagram lo vuelve a mostrar a
+quien no lo terminó. Por eso la tapa dice "Desliza" y la última lámina es la
+que lleva al link.
+
+### Las historias interactivas
+
+Las historias no se guardan en el perfil, pero son lo único que genera
+respuestas directas. Las cuatro piezas son verticales, 1080×1920, y están
+diseñadas con una franja vacía a propósito: **ahí va el sticker**, que se
+pone en Instagram al momento de subirla.
+
+| Archivo | Sticker que hay que agregar |
+|---|---|
+| `historia-1-encuesta.png` | Encuesta, con opciones de precio: `$39.990` / `$51.990` / `$64.990` / `Más` |
+| `historia-2-respuesta.png` | Ninguno. Va después de la encuesta, cuando ya votaron. |
+| `historia-3-pregunta.png` | Caja de preguntas ("Hazme una pregunta") |
+| `historia-4-precios.png` | Sticker de link al sitio |
+
+La 1 y la 2 van juntas: la encuesta primero, y la respuesta unas horas
+después, cuando ya hay votos. Las respuestas de la caja de preguntas dan
+material para publicaciones de la semana siguiente, escritas con las dudas
+reales de la gente en vez de las que uno se imagina.
+
+### El video explicativo
+
+`video-como-funciona.mp4`, vertical, 23 segundos, sin voz. Se sube como
+Reel. El texto está en `video-como-funciona.txt`.
+
+No tiene audio, así que **hay que ponerle música desde Instagram al subirlo**:
+un Reel sin sonido se reproduce menos. Cualquier pista instrumental del
+catálogo sirve; lo que importa es que haya algo.
+
+El video se vuelve a generar con:
+
+    node tools/video-instagram  # ver tools/video-instagram/README.md
+
+Los textos y los precios del video están en `tools/video-instagram/src/`.
+
+### El video con una persona presentando
+
+Es el que más confianza genera y el único que no puedo producir yo: necesita
+a alguien frente a la cámara. El guion completo, los planos y las
+instrucciones de grabación están en [video-presentacion.md](video-presentacion.md).
+
+## Una advertencia sobre el afiche de "Bajamos los precios"
+
+`8-precios-nuevos.png` muestra los precios viejos tachados y los nuevos al
+lado. Funciona solo con gente que alcanzó a ver los precios anteriores.
+
+En una cuenta recién abierta, nadie los vio: el afiche anuncia una rebaja
+sobre un precio que esa persona nunca conoció, y suena a truco de vitrina.
+**No lo uses en la semana de lanzamiento.** Guárdalo para cuando la cuenta
+ya tenga seguidores, o úsalo ahora solo si alcanzaste a mandarle los precios
+viejos a alguien por mensaje.
+
+Para la semana de lanzamiento, el afiche de precios que corresponde es
+`2-precios.png`, que simplemente dice cuánto cuesta.
+
 ## Después de la semana
 
 Ideas para seguir, sin inventar nada que el sitio no haga:

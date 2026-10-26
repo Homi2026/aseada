@@ -140,6 +140,22 @@ Postula desde el link en la bio.
 
 ---
 
+## La página con el plan, para el teléfono
+
+Todas las publicaciones en orden, cada una con su miniatura y su texto con un
+botón para copiarlo, y un cuadrito que marcar cuando ya la subiste:
+
+https://claude.ai/artifact/WZVTANNaHxyvFbLECBBSVp
+
+Está pensada para tenerla abierta en el teléfono mientras publicas: copiar,
+guardar la imagen, subir. El avance se guarda en ese mismo teléfono.
+
+Se vuelve a generar, si cambian las piezas o los textos, con:
+
+    cd ~/Documents/aseada-instagram && for f in *.png; do \
+      sips -s format jpeg -s formatOptions 62 -Z 400 "$f" --out /tmp/mini/"${f%.png}".jpg; done
+    node tools/armar-plan-publicacion.mjs /tmp/mini /tmp/plan.html
+
 ## Cómo publicar
 
 **A mano (no depende de nada).** Abres Instagram, subes el PNG del día y pegas

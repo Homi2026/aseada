@@ -5,6 +5,14 @@
  */
 export const TITULO_SITIO = 'Aseada · Aseo del hogar y fumigación en Chile';
 
+/**
+ * De donde cuelga el sitio. og:image y og:url tienen que ser direcciones
+ * absolutas: WhatsApp y Facebook no resuelven rutas relativas al previsualizar
+ * un link. Cuando exista el dominio propio, se cambia aca o por la variable.
+ */
+export const URL_SITIO =
+  process.env.EXPO_PUBLIC_SITE_URL || 'https://web-production-d6ba2.up.railway.app';
+
 /** A donde escriben clientes y aseadores: contraseña olvidada, dudas, reclamos. */
 export const SOPORTE_EMAIL = 'soporteaseada@gmail.com';
 

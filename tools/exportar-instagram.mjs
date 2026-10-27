@@ -15,6 +15,11 @@ const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 const FEED = [1080, 1080];      // publicacion cuadrada
 const HISTORIA = [1080, 1920];  // historia o reel, vertical
+const PREVIA = [1200, 630];     // vista previa al compartir un link
+
+// Casi todo va a la carpeta de Instagram, pero la vista previa del link la
+// sirve el sitio, asi que vive en el repo.
+const PUBLICO = new URL('../app/public/', import.meta.url).pathname;
 
 // El orden de publicacion. El numero del nombre es el dia que le toca; las
 // laminas de un carrusel comparten el dia y se suben juntas, en orden.
@@ -39,6 +44,8 @@ const ORDEN = [
   ['StoryRespuesta.dc.html', 'historia-2-respuesta', HISTORIA],
   ['StoryPregunta.dc.html', 'historia-3-pregunta', HISTORIA],
   ['StoryPrecios.dc.html', 'historia-4-precios', HISTORIA],
+
+  ['CompartirLink.dc.html', 'og', PREVIA, PUBLICO],
 ];
 
 mkdirSync(TRABAJO, { recursive: true });
@@ -50,7 +57,7 @@ const entre = (texto, desde, hasta) => {
   return i === -1 || j === -1 ? '' : texto.slice(i + desde.length, j);
 };
 
-for (const [archivo, nombre, [ancho, alto]] of ORDEN) {
+for (const [archivo, nombre, [ancho, alto], destino = DESTINO] of ORDEN) {
   const fuente = readFileSync(join(ORIGEN, archivo), 'utf8');
   // El <helmet> lleva la fuente de Google y los estilos base; el contenido
   // visible es todo lo que va entre </helmet> y </x-dc>.
@@ -71,7 +78,7 @@ for (const [archivo, nombre, [ancho, alto]] of ORDEN) {
     `--window-size=${ancho},${alto}`,
     // Tiempo virtual para que alcance a descargar y aplicar la tipografia.
     '--virtual-time-budget=8000',
-    `--screenshot=${join(DESTINO, `${nombre}.png`)}`,
+    `--screenshot=${join(destino, `${nombre}.png`)}`,
     `file://${htmlPath}`,
   ], { stdio: 'pipe' });
   console.log(`✓ ${nombre}.png`);

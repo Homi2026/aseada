@@ -1,7 +1,7 @@
 import { ScrollViewStyleReset } from 'expo-router/html';
 import { type PropsWithChildren } from 'react';
 
-import { DESCRIPCION_SITIO, TITULO_SITIO } from '@/constants/sitio';
+import { DESCRIPCION_SITIO, TITULO_SITIO, URL_SITIO } from '@/constants/sitio';
 
 // Este es el documento HTML raiz de la exportacion web: lo que va aca sale en
 // todas las paginas del sitio. Sin estas etiquetas, compartir el link no
@@ -10,8 +10,10 @@ import { DESCRIPCION_SITIO, TITULO_SITIO } from '@/constants/sitio';
 // inyecta su propio <title> al comienzo del head, y el navegador se queda con
 // el primero. Si lo escribieramos aca, el titulo visible seria el vacio de
 // expo-router.
-// No hay og:image: la unica imagen publicada es el favicon y a ese tamano se ve
-// peor que no poner nada. Cuando exista una imagen de marca (1200x630), va aca.
+// og:image sale de app/public/og.png, que se genera con
+// `node tools/exportar-instagram.mjs` desde tools/piezas-instagram/CompartirLink.dc.html.
+// Tiene que ser una direccion absoluta: al previsualizar un link, WhatsApp y
+// Facebook no resuelven rutas relativas.
 export default function Root({ children }: PropsWithChildren) {
   return (
     <html lang="es">
@@ -25,7 +27,13 @@ export default function Root({ children }: PropsWithChildren) {
         <meta property="og:description" content={DESCRIPCION_SITIO} />
         <meta property="og:type" content="website" />
         <meta property="og:locale" content="es_CL" />
-        <meta name="twitter:card" content="summary" />
+        <meta property="og:url" content={URL_SITIO} />
+        <meta property="og:image" content={`${URL_SITIO}/og.png`} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content="Aseada · Tu casa limpia. Tu tiempo, de vuelta." />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:image" content={`${URL_SITIO}/og.png`} />
         <meta name="twitter:title" content={TITULO_SITIO} />
         <meta name="twitter:description" content={DESCRIPCION_SITIO} />
         <ScrollViewStyleReset />

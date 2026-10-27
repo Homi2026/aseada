@@ -270,3 +270,45 @@ test('migracionesDelRepo lee los .sql reales, en orden', () => {
   assert.deepEqual(archivos, [...archivos].sort(), 'el orden importa: es el de aplicacion');
   assert.ok(archivos.every((a) => a.endsWith('.sql')));
 });
+
+test('el proceso periodico atascado sale como aviso, sin tumbar el servicio', async () => {
+  const db = await baseAlDia();
+  const intervalo = 30;
+  // Tres horas sin correr: muy por encima del doble del intervalo.
+  const viejo = new Date(Date.now() - 3 * 60 * 60 * 1000);
+
+  const { ok, cuerpo } = await salud.estado({
+    db,
+    config: { ...CONFIG_SANA, intervaloProcesoMin: intervalo, ultimoProceso: viejo },
+    entorno: {}
+  });
+
+  assert.equal(cuerpo.proceso_periodico.al_dia, false);
+  assert.equal(cuerpo.proceso_periodico.hace_min, 180);
+  assert.match(cuerpo.avisos.join(' '), /no corre hace 180 min/);
+  // Que el motor se detenga es grave, pero el servicio sigue atendiendo: la
+  // gente puede agendar y pagar. Bajarlo a 503 apagaria el sitio entero.
+  assert.equal(ok, true);
+});
+
+test('el proceso periodico recien corrido no genera aviso', async () => {
+  const db = await baseAlDia();
+  const { cuerpo } = await salud.estado({
+    db,
+    config: { ...CONFIG_SANA, intervaloProcesoMin: 30, ultimoProceso: new Date() },
+    entorno: {}
+  });
+
+  assert.equal(cuerpo.proceso_periodico.al_dia, true);
+  assert.equal(cuerpo.avisos.filter((a) => a.includes('proceso periodico')).length, 0);
+});
+
+test('recien arrancado, no haber corrido todavia no es una falla', async () => {
+  const db = await baseAlDia();
+  const { ok, cuerpo } = await salud.estado({ db, config: CONFIG_SANA, entorno: {} });
+
+  assert.equal(cuerpo.proceso_periodico.ultima_corrida, null);
+  assert.equal(cuerpo.proceso_periodico.al_dia, null);
+  assert.equal(ok, true);
+  assert.equal(cuerpo.avisos.filter((a) => a.includes('proceso periodico')).length, 0);
+});

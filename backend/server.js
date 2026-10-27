@@ -146,6 +146,11 @@ app.use(cors({
 // volver a leer process.env ni repetir la logica de que cuenta como "bien
 // configurado".
 const CONFIG_PARA_SALUD = {
+  // Getters y no valores: el objeto se arma una vez al arrancar, pero estos
+  // dos cambian en cada vuelta del proceso periodico.
+  get ultimoProceso() { return ultimoProceso; },
+  get errorUltimoProceso() { return errorUltimoProceso; },
+  get intervaloProcesoMin() { return INTERVALO_PROCESO_MIN; },
   faltaParaFlow: FALTA_PARA_FLOW,
   corsRestringido: CORS_ORIGINS.length > 0,
   cronProtegido: Boolean(CRON_SECRET),
@@ -1236,6 +1241,11 @@ app.get('/api/cron/diario', async (req, res) => {
 // disponible mas cerca de las 24 h reales en vez de esperar un horario fijo.
 const INTERVALO_PROCESO_MIN = Number(process.env.INTERVALO_PROCESO_MIN) || 30;
 let procesoPeriodicoCorriendo = false;
+// Cuando termino bien la ultima vuelta, y que paso si fallo. /health los
+// publica: sin esto, que el proceso se detuviera era invisible hasta que un
+// cliente reclamaba que no le habian devuelto la plata.
+let ultimoProceso = null;
+let errorUltimoProceso = null;
 
 async function correrProcesoPeriodico() {
   // Si la vuelta anterior todavia no termino, se salta esta: superponer dos
@@ -1245,10 +1255,13 @@ async function correrProcesoPeriodico() {
   procesoPeriodicoCorriendo = true;
   try {
     const r = await procesoDiario();
+    ultimoProceso = new Date();
+    errorUltimoProceso = null;
     if (r.liberados > 0 || r.disponibles > 0) {
       console.log(`[aseada] proceso periodico: ${r.liberados} liberado(s), ${r.disponibles} disponible(s) para transferir.`);
     }
   } catch (error) {
+    errorUltimoProceso = error.message;
     console.error('[aseada] el proceso periodico fallo:', error.message);
   } finally {
     procesoPeriodicoCorriendo = false;

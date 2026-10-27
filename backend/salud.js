@@ -154,6 +154,31 @@ async function estado({ db, config = {}, entorno = process.env } = {}) {
   if (!configuracion.cron_protegido) avisos.push('CRON_SECRET no esta definida: el proceso diario que libera pagos no corre.');
   if (!configuracion.app_url_definida) avisos.push('APP_URL no esta definida: despues de pagar, Flow devuelve al cliente a un deep link que en un navegador no abre nada.');
 
+  // ── 5. Si el motor que mueve la plata sigue latiendo ──────────────────────
+  // El proceso periodico libera los pagos retenidos, marca los fondos como
+  // disponibles para transferir y detecta a los aseadores que no llegaron. Si
+  // se detiene, nada falla a la vista: las peticiones siguen respondiendo 200
+  // y el dinero simplemente deja de moverse, hasta que un cliente reclama.
+  // Por eso se reporta aca cuando corrio por ultima vez.
+  const proceso = { intervalo_min: config.intervaloProcesoMin ?? null };
+  if (config.ultimoProceso) {
+    const haceMs = Date.now() - config.ultimoProceso.getTime();
+    proceso.ultima_corrida = config.ultimoProceso.toISOString();
+    proceso.hace_min = Math.round(haceMs / 60000);
+    // Se da por atascado pasado el doble del intervalo mas un margen: una
+    // corrida larga no deberia disparar la alarma, dos saltadas si.
+    const tope = (config.intervaloProcesoMin || 30) * 2.5 * 60000;
+    proceso.al_dia = haceMs <= tope;
+    if (!proceso.al_dia) {
+      avisos.push(`El proceso periodico no corre hace ${proceso.hace_min} min: los pagos retenidos no se estan liberando.`);
+    }
+  } else {
+    // Al arrancar todavia no corrio ninguna vez; eso no es una falla.
+    proceso.ultima_corrida = null;
+    proceso.al_dia = null;
+  }
+  if (config.errorUltimoProceso) proceso.ultimo_error = config.errorUltimoProceso;
+
   // `ok` es lo que decide 200 o 503, y solo lo bajan las dos cosas que dejan
   // el servicio roto de verdad. Lo demas son avisos: molesta, no impide operar.
   const ok = baseResponde && migraciones.al_dia !== false;
@@ -167,6 +192,7 @@ async function estado({ db, config = {}, entorno = process.env } = {}) {
       base_de_datos,
       migraciones,
       pagos_flow,
+      proceso_periodico: proceso,
       configuracion,
       avisos
     }

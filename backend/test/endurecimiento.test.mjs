@@ -186,3 +186,23 @@ test('el servidor y los scripts deciden el TLS de Postgres con la misma regla', 
     assert.match(fuente, /sslPostgres/, `${archivo} tiene que usar la regla compartida`);
   }
 });
+
+test('toda respuesta trae las cabeceras de seguridad, y ninguna delata el framework', async () => {
+  await conServidor(async (base) => {
+    // Se revisan dos respuestas distintas, una publica y un 404, porque las
+    // cabeceras tienen que salir del middleware y no de cada ruta.
+    for (const ruta of ['/', '/ruta-que-no-existe']) {
+      const r = await fetch(`${base}${ruta}`);
+      assert.equal(
+        r.headers.get('strict-transport-security'),
+        'max-age=31536000; includeSubDomains', ruta);
+      assert.equal(r.headers.get('x-content-type-options'), 'nosniff', ruta);
+      assert.equal(r.headers.get('x-frame-options'), 'DENY', ruta);
+      assert.equal(
+        r.headers.get('content-security-policy'),
+        "default-src 'none'; frame-ancestors 'none'", ruta);
+      assert.equal(r.headers.get('referrer-policy'), 'no-referrer', ruta);
+      assert.equal(r.headers.get('x-powered-by'), null, ruta);
+    }
+  });
+});

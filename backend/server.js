@@ -108,6 +108,24 @@ pool.on('error', (error) => console.error('[aseada] error inesperado en el pool 
 // saber contra que framework esta.
 app.disable('x-powered-by');
 
+// Cabeceras de seguridad. Esta API responde solo JSON, asi que puede
+// permitirse las reglas mas estrictas que existen: nada que cargar, nada que
+// enmarcar, nada que adivinar.
+app.use((req, res, next) => {
+  // Que el navegador no vuelva a hablar por http con este dominio durante un
+  // ano, ni aunque alguien escriba la direccion sin la s.
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  // Sin esto, un navegador puede decidir que un JSON es en realidad HTML y
+  // ejecutarlo.
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Nadie tiene por que meter esta API dentro de un iframe.
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+  // Que la direccion de una pagina de Aseada no viaje a otros sitios.
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
 // El CORS estaba en `*`: cualquier sitio podia llamar esta API desde el
 // navegador de alguien con la sesion abierta. La lista blanca va en
 // CORS_ORIGINS, separada por comas. Si no esta definida se mantiene el

@@ -12,19 +12,23 @@ Sitio: https://web-production-d6ba2.up.railway.app
 
 ## Calendario
 
-Del lunes 26 de octubre al domingo 1 de noviembre. Las horas apuntan a cuando
-la gente está en el teléfono: tarde-noche entre semana, media mañana el fin de
-semana.
+Del miércoles 28 de octubre al martes 3 de noviembre. Las horas apuntan a
+cuando la gente está en el teléfono: tarde-noche entre semana, media mañana el
+fin de semana.
 
 | Día | Fecha | Hora | Publicación | Archivo |
 |---|---|---|---|---|
-| 1 | Lun 26 oct | 19:00 | Lanzamiento | `1-lanzamiento.png` |
-| 2 | Mar 27 oct | 13:00 | Precios claros | `2-precios.png` |
-| 3 | Mié 28 oct | 19:00 | Pago protegido | `3-pago-protegido.png` |
-| 4 | Jue 29 oct | 13:00 | Cómo funciona | `4-como-funciona.png` |
-| 5 | Vie 30 oct | 19:00 | Plan semanal | `5-plan-semanal.png` |
-| 6 | Sáb 31 oct | 11:00 | Si nadie llega | `6-si-nadie-llega.png` |
-| 7 | Dom 1 nov | 11:00 | Convocatoria a aseadores | `7-aseadores.png` |
+| 1 | Mié 28 oct | 19:00 | Lanzamiento | `1-lanzamiento.png` |
+| 2 | Jue 29 oct | 13:00 | Precios claros | `2-precios.png` |
+| 3 | Vie 30 oct | 19:00 | Pago protegido | `3-pago-protegido.png` |
+| 4 | Sáb 31 oct | 11:00 | Cómo funciona | `4-como-funciona.png` |
+| 5 | Dom 1 nov | 11:00 | Plan semanal | `5-plan-semanal.png` |
+| 6 | Lun 2 nov | 19:00 | Si nadie llega | `6-si-nadie-llega.png` |
+| 7 | Mar 3 nov | 13:00 | Convocatoria a aseadores | `7-aseadores.png` |
+
+Los nombres de día y las fechas tienen que calzar. La primera version de esta
+tabla los tenia corridos en uno, y un calendario con el dia equivocado manda a
+programar en la fecha equivocada.
 
 Si prefieres otras fechas, corre el calendario completo: el orden importa más
 que los días exactos. El día 1 tiene que ir primero porque anuncia el sitio, y
@@ -180,7 +184,7 @@ Pídemelo y lo hago.
 ## Segunda semana: carrusel, historias y video
 
 La primera semana son siete publicaciones sueltas. Lo que sigue es material
-para la semana del 2 al 8 de noviembre, con tres formatos que la primera
+para la semana del 4 al 8 de noviembre, con tres formatos que la primera
 semana no tiene.
 
 ### El carrusel didáctico (5 láminas)

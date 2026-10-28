@@ -20,27 +20,27 @@ const texto = (nombre) => readFileSync(join(TEXTOS, `${nombre}.txt`), 'utf8').tr
 const escapar = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const PUBLICACIONES = [
-  { dia: 'Lunes 26', hora: '19:00', tipo: 'Publicación', titulo: 'Aseada ya está en línea',
+  { dia: 'Miércoles 28 oct', hora: '19:00', tipo: 'Publicación', titulo: 'Aseada ya está en línea',
     piezas: ['1-lanzamiento'], textoDe: '1-lanzamiento' },
-  { dia: 'Martes 27', hora: '13:00', tipo: 'Publicación', titulo: 'Precios claros',
+  { dia: 'Jueves 29 oct', hora: '13:00', tipo: 'Publicación', titulo: 'Precios claros',
     piezas: ['2-precios'], textoDe: '2-precios' },
-  { dia: 'Miércoles 28', hora: '19:00', tipo: 'Publicación', titulo: 'Pago protegido',
+  { dia: 'Viernes 30 oct', hora: '19:00', tipo: 'Publicación', titulo: 'Pago protegido',
     piezas: ['3-pago-protegido'], textoDe: '3-pago-protegido' },
-  { dia: 'Jueves 29', hora: '13:00', tipo: 'Publicación', titulo: 'Cómo funciona',
+  { dia: 'Sábado 31 oct', hora: '11:00', tipo: 'Publicación', titulo: 'Cómo funciona',
     piezas: ['4-como-funciona'], textoDe: '4-como-funciona' },
-  { dia: 'Viernes 30', hora: '19:00', tipo: 'Publicación', titulo: 'Plan semanal',
+  { dia: 'Domingo 1 nov', hora: '11:00', tipo: 'Publicación', titulo: 'Plan semanal',
     piezas: ['5-plan-semanal'], textoDe: '5-plan-semanal' },
-  { dia: 'Sábado 31', hora: '11:00', tipo: 'Publicación', titulo: 'Si nadie llega',
+  { dia: 'Lunes 2 nov', hora: '19:00', tipo: 'Publicación', titulo: 'Si nadie llega',
     piezas: ['6-si-nadie-llega'], textoDe: '6-si-nadie-llega' },
-  { dia: 'Domingo 1 nov', hora: '11:00', tipo: 'Publicación', titulo: 'Convocatoria a aseadores',
+  { dia: 'Martes 3 nov', hora: '13:00', tipo: 'Publicación', titulo: 'Convocatoria a aseadores',
     piezas: ['7-aseadores'], textoDe: '7-aseadores' },
 
-  { dia: 'Lunes 2 nov', hora: '19:00', tipo: 'Carrusel', titulo: 'Cómo funciona, paso a paso',
+  { dia: 'Jueves 5 nov', hora: '19:00', tipo: 'Carrusel', titulo: 'Cómo funciona, paso a paso',
     piezas: ['9-carrusel-1-tapa', '9-carrusel-2-paso1', '9-carrusel-3-paso2', '9-carrusel-4-paso3', '9-carrusel-5-cierre'],
     textoDe: '9-carrusel',
     aviso: 'Las cinco láminas van en una sola publicación, en este orden. Instagram vuelve a mostrar un carrusel a quien no lo terminó, por eso la tapa dice "Desliza".' },
 
-  { dia: 'Miércoles 4 nov', hora: '13:00', tipo: 'Reel', titulo: 'El video explicativo',
+  { dia: 'Sábado 7 nov', hora: '11:00', tipo: 'Reel', titulo: 'El video explicativo',
     piezas: [], archivo: 'video-como-funciona.mp4', textoDe: 'video-como-funciona',
     aviso: 'El video no trae audio: ponle música del catálogo de Instagram al subirlo. Un Reel mudo se muestra menos.' },
 ];
@@ -300,7 +300,7 @@ const html = `<title>Plan de publicación Aseada</title>
     <div class="barra"><span id="barra"></span></div>
   </div>
 
-  <h2 class="seccion">Primera semana · una por día</h2>
+  <h2 class="seccion">Lanzamiento · una por día</h2>
   ${PUBLICACIONES.slice(0, 7).map(tarjeta).join('')}
 
   <h2 class="seccion">Segunda semana · carrusel y video</h2>

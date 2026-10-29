@@ -94,3 +94,15 @@ regenera en Flow → Configuración → Datos de integración.
   razón social y el RUT cuando exista la SpA.
 - Consulta al contador: IVA sobre la comisión o sobre el total, y régimen
   tributario.
+
+## Cuando exista el dominio propio
+
+La dirección del sitio está escrita en cuatro lugares y los cuatro hay que
+cambiarlos juntos. Un sitemap que apunta a otro dominio Google lo ignora
+entero, y una `og:image` con la dirección vieja deja de mostrarse al
+compartir el link.
+
+- `app/src/constants/sitio.ts` → `URL_SITIO` (o la variable `EXPO_PUBLIC_SITE_URL`)
+- `app/public/robots.txt` → la línea `Sitemap:`
+- `app/public/sitemap.xml` → las tres `<loc>`
+- La variable `CORS_ORIGINS` del backend en Railway

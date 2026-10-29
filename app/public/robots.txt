@@ -1,0 +1,15 @@
+# Aseada — https://web-production-d6ba2.up.railway.app
+#
+# Lo publico se indexa; lo que vive detras de una sesion, no. Las pantallas de
+# cliente, aseador y administracion no sirven de nada en un resultado de
+# busqueda: sin sesion no muestran nada, y aparecer ahi solo gasta rastreo.
+
+User-agent: *
+Allow: /
+Disallow: /cliente/
+Disallow: /worker/
+Disallow: /admin
+Disallow: /login
+Disallow: /registro
+
+Sitemap: https://web-production-d6ba2.up.railway.app/sitemap.xml

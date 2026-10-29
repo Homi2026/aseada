@@ -20,27 +20,27 @@ const texto = (nombre) => readFileSync(join(TEXTOS, `${nombre}.txt`), 'utf8').tr
 const escapar = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 const PUBLICACIONES = [
-  { dia: 'Miércoles 28 oct', hora: '19:00', tipo: 'Publicación', titulo: 'Aseada ya está en línea',
+  { offset: 0, tipo: 'Publicación', titulo: 'Aseada ya está en línea',
     piezas: ['1-lanzamiento'], textoDe: '1-lanzamiento' },
-  { dia: 'Jueves 29 oct', hora: '13:00', tipo: 'Publicación', titulo: 'Precios claros',
+  { offset: 1, tipo: 'Publicación', titulo: 'Precios claros',
     piezas: ['2-precios'], textoDe: '2-precios' },
-  { dia: 'Viernes 30 oct', hora: '19:00', tipo: 'Publicación', titulo: 'Pago protegido',
+  { offset: 2, tipo: 'Publicación', titulo: 'Pago protegido',
     piezas: ['3-pago-protegido'], textoDe: '3-pago-protegido' },
-  { dia: 'Sábado 31 oct', hora: '11:00', tipo: 'Publicación', titulo: 'Cómo funciona',
+  { offset: 3, tipo: 'Publicación', titulo: 'Cómo funciona',
     piezas: ['4-como-funciona'], textoDe: '4-como-funciona' },
-  { dia: 'Domingo 1 nov', hora: '11:00', tipo: 'Publicación', titulo: 'Plan semanal',
+  { offset: 4, tipo: 'Publicación', titulo: 'Plan semanal',
     piezas: ['5-plan-semanal'], textoDe: '5-plan-semanal' },
-  { dia: 'Lunes 2 nov', hora: '19:00', tipo: 'Publicación', titulo: 'Si nadie llega',
+  { offset: 5, tipo: 'Publicación', titulo: 'Si nadie llega',
     piezas: ['6-si-nadie-llega'], textoDe: '6-si-nadie-llega' },
-  { dia: 'Martes 3 nov', hora: '13:00', tipo: 'Publicación', titulo: 'Convocatoria a aseadores',
+  { offset: 6, tipo: 'Publicación', titulo: 'Convocatoria a aseadores',
     piezas: ['7-aseadores'], textoDe: '7-aseadores' },
 
-  { dia: 'Jueves 5 nov', hora: '19:00', tipo: 'Carrusel', titulo: 'Cómo funciona, paso a paso',
+  { offset: 8, tipo: 'Carrusel', titulo: 'Cómo funciona, paso a paso',
     piezas: ['9-carrusel-1-tapa', '9-carrusel-2-paso1', '9-carrusel-3-paso2', '9-carrusel-4-paso3', '9-carrusel-5-cierre'],
     textoDe: '9-carrusel',
     aviso: 'Las cinco láminas van en una sola publicación, en este orden. Instagram vuelve a mostrar un carrusel a quien no lo terminó, por eso la tapa dice "Desliza".' },
 
-  { dia: 'Sábado 7 nov', hora: '11:00', tipo: 'Reel', titulo: 'El video explicativo',
+  { offset: 10, tipo: 'Reel', titulo: 'El video explicativo',
     piezas: [], archivo: 'video-como-funciona.mp4', textoDe: 'video-como-funciona',
     aviso: 'El video no trae audio: ponle música del catálogo de Instagram al subirlo. Un Reel mudo se muestra menos.' },
 ];
@@ -57,14 +57,15 @@ const HISTORIAS = [
 ];
 
 const tarjeta = (p, i) => `
-  <article class="tarjeta" data-clave="pub-${i}">
+  <article class="tarjeta" data-clave="pub-${i}" data-offset="${p.offset}"
+    data-url="https://web-production-d6ba2.up.railway.app/instagram/${p.archivo || (p.piezas[0] + '.png')}">
     <header class="cabecera">
       <label class="hecho">
         <input type="checkbox" id="hecho-${i}">
         <span class="marca" aria-hidden="true"></span>
       </label>
       <div class="cuando">
-        <span class="dia">${p.dia} · ${p.hora}</span>
+        <span class="dia" data-offset="${p.offset}"></span>
         <h3>${p.titulo}</h3>
       </div>
       <span class="tipo tipo-${p.tipo.toLowerCase()}">${p.tipo}</span>
@@ -178,6 +179,31 @@ const html = `<title>Plan de publicación Aseada</title>
   }
 
   .intro { margin: 0; font-size: 15px; line-height: 1.55; color: var(--tenue); }
+
+  .arranque {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    background: var(--superficie); border: 1px solid var(--borde);
+    border-radius: 14px; padding: 14px 16px; font-size: 14px;
+  }
+  .arranque label { color: var(--tenue); font-weight: 600; }
+  .arranque input[type="date"] {
+    font-family: inherit; font-size: 14px; color: var(--tinta);
+    background: var(--papel); border: 1px solid var(--borde);
+    border-radius: 9px; padding: 7px 10px; min-height: 36px;
+  }
+  .arranque button {
+    font-family: inherit; font-size: 13px; font-weight: 700; cursor: pointer;
+    color: var(--tinta); background: transparent;
+    border: 1px solid var(--borde); border-radius: 999px;
+    padding: 8px 14px; min-height: 36px;
+  }
+  .arranque button:hover { background: var(--papel); }
+  .arranque button:focus-visible { outline: 2px solid var(--pino); outline-offset: 2px; }
+  .arranque .prompt {
+    margin-left: auto; color: #FFF; background: var(--pino); border-color: var(--pino);
+  }
+  .arranque .prompt:hover { filter: brightness(1.08); background: var(--pino); }
+  .arranque .prompt.ok { background: var(--oro); border-color: var(--oro); color: #15201A; }
 
   .avance {
     display: flex; align-items: center; gap: 12px;
@@ -294,6 +320,13 @@ const html = `<title>Plan de publicación Aseada</title>
     </p>
   </header>
 
+  <div class="arranque">
+    <label for="inicio">Empiezo el</label>
+    <input type="date" id="inicio">
+    <button type="button" id="hoy">Hoy</button>
+    <button type="button" id="prompt" class="prompt">Copiar instrucciones para Metricool</button>
+  </div>
+
   <div class="avance">
     <span>Publicadas</span>
     <b id="contador">0 de ${PUBLICACIONES.length + HISTORIAS.length}</b>
@@ -369,6 +402,171 @@ const html = `<title>Plan de publicación Aseada</title>
     });
   });
   refrescar();
+
+  // ── Fechas ───────────────────────────────────────────────────────────────
+  // Las fechas no van escritas en la pagina: se calculan desde el dia que
+  // elijas. Antes estaban fijas y quedaban viejas al dia siguiente, y una
+  // fecha vencida en un calendario que alimenta a un agente termina en una
+  // publicacion programada en el pasado.
+  var campoInicio = document.getElementById("inicio");
+  var LLAVE_INICIO = "aseada-plan-inicio";
+
+  function hoyLocal() {
+    var d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function comoCampo(d) {
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var dd = String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + m + "-" + dd;
+  }
+
+  function desdeCampo(texto) {
+    var partes = (texto || "").split("-").map(Number);
+    if (partes.length !== 3 || !partes[0]) return hoyLocal();
+    return new Date(partes[0], partes[1] - 1, partes[2]);
+  }
+
+  function masDias(base, dias) {
+    var d = new Date(base.getTime());
+    d.setDate(d.getDate() + dias);
+    return d;
+  }
+
+  // Tarde-noche entre semana, media manana el fin de semana: es cuando la
+  // gente mira el telefono sin apuro.
+  function horaDe(fecha, indice) {
+    var dia = fecha.getDay();
+    if (dia === 0 || dia === 6) return "11:00";
+    return indice % 2 === 0 ? "19:00" : "13:00";
+  }
+
+  function nombreDia(fecha) {
+    var t = fecha.toLocaleDateString("es-CL", { weekday: "long", day: "numeric", month: "short" });
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
+  var tarjetas = Array.prototype.slice.call(document.querySelectorAll(".tarjeta[data-offset]"));
+
+  function repintarFechas() {
+    var inicio = desdeCampo(campoInicio.value);
+    tarjetas.forEach(function (t, i) {
+      var fecha = masDias(inicio, Number(t.dataset.offset));
+      var hora = horaDe(fecha, i);
+      t.dataset.fechaTexto = nombreDia(fecha) + " · " + hora;
+      var destino = t.querySelector(".dia");
+      if (destino) destino.textContent = t.dataset.fechaTexto;
+    });
+  }
+
+  campoInicio.value = (function () {
+    try {
+      var guardado = localStorage.getItem(LLAVE_INICIO);
+      if (guardado) return guardado;
+    } catch (e) { /* sin almacenamiento: parte hoy */ }
+    return comoCampo(hoyLocal());
+  })();
+
+  campoInicio.addEventListener("change", function () {
+    try { localStorage.setItem(LLAVE_INICIO, campoInicio.value); } catch (e) {}
+    repintarFechas();
+  });
+
+  document.getElementById("hoy").addEventListener("click", function () {
+    campoInicio.value = comoCampo(hoyLocal());
+    try { localStorage.setItem(LLAVE_INICIO, campoInicio.value); } catch (e) {}
+    repintarFechas();
+  });
+
+  repintarFechas();
+
+  // ── Instrucciones para el agente de navegador ────────────────────────────
+  // Se arman aca y no a mano para que las fechas sean siempre las que se ven
+  // en pantalla: un prompt escrito aparte se desincroniza al primer cambio.
+  function armarPrompt() {
+    var bloques = tarjetas.slice(0, 7).map(function (t, i) {
+      var texto = t.querySelector(".texto pre").textContent;
+      return "════════════════════════════════════════════════\\n"
+        + "PUBLICACIÓN " + (i + 1) + " — " + t.dataset.fechaTexto + "\\n"
+        + "IMAGEN: " + t.dataset.url + "\\n"
+        + "TEXTO:\\n" + texto;
+    });
+
+    return [
+      "Ayúdame a programar publicaciones en Metricool. Trabaja en https://app.metricool.com",
+      "",
+      "## Antes que nada: la marca correcta",
+      "",
+      "En esta cuenta hay dos marcas: 'recetasdecorazon' y 'Aseada'. TODO lo que",
+      "sigue va exclusivamente en **Aseada**, en su perfil de Instagram.",
+      "",
+      "Antes de crear nada, confirma en pantalla cuál es la marca activa. Si dice",
+      "'recetasdecorazon', cámbiala en el selector de arriba a la derecha. Si no",
+      "logras confirmarlo con certeza, detente y pregúntame: publicar esto en la",
+      "cuenta equivocada es el peor error posible.",
+      "",
+      "## Qué necesito",
+      "",
+      "Programar 7 publicaciones de Instagram, de feed, con una sola imagen cada una.",
+      "Para cada una:",
+      "",
+      "1. Crea una publicación nueva desde el planificador.",
+      "2. Marca SOLO Instagram como red de destino.",
+      "3. Carga la imagen desde su URL. Si Metricool no acepta pegar una URL, ábrela",
+      "   en otra pestaña, guarda la imagen y súbela desde el archivo.",
+      "4. Pega el texto EXACTO: mismos saltos de línea, emojis y hashtags. No lo",
+      "   reescribas, no lo resumas, no le agregues nada.",
+      "5. Fija la fecha y la hora indicadas. Horario de Chile.",
+      "6. Déjala PROGRAMADA. No publiques nada de inmediato.",
+      "",
+      "## Punto de control",
+      "",
+      "Haz solamente la publicación 1. Muéstrame cómo quedó el borrador —marca,",
+      "fecha, imagen y texto— y espera mi 'ok' antes de seguir con las otras 6.",
+      "",
+      "## Verifica las fechas",
+      "",
+      "Cada publicación trae día de la semana y fecha. Si al ponerlas en el",
+      "calendario el día no calza con la fecha, detente y pregúntame: manda la fecha.",
+      "",
+      "## Si algo no calza",
+      "",
+      "Si un campo no existe, si Metricool pide algo que no está acá, o si dudas:",
+      "pregúntame. No inventes textos, fechas, hashtags ni imágenes.",
+      "",
+      "## Al terminar",
+      "",
+      "Dime cuáles quedaron programadas y con qué fecha, y avísame si alguna falló.",
+      ""
+    ].join("\\n") + bloques.join("\\n") + "\\n════════════════════════════════════════════════\\n";
+  }
+
+  var botonPrompt = document.getElementById("prompt");
+  botonPrompt.addEventListener("click", function () {
+    var texto = armarPrompt();
+    var listo = function () {
+      botonPrompt.textContent = "Copiado · pégalo en Claude en Chrome";
+      botonPrompt.classList.add("ok");
+      setTimeout(function () {
+        botonPrompt.textContent = "Copiar instrucciones para Metricool";
+        botonPrompt.classList.remove("ok");
+      }, 2600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texto).then(listo, function () {
+        botonPrompt.textContent = "No se pudo copiar";
+      });
+    } else {
+      var area = document.createElement("textarea");
+      area.value = texto;
+      document.body.appendChild(area);
+      area.select();
+      try { document.execCommand("copy"); listo(); } catch (e) { botonPrompt.textContent = "No se pudo copiar"; }
+      document.body.removeChild(area);
+    }
+  });
 
   document.querySelectorAll("button.copiar").forEach(function (boton) {
     boton.addEventListener("click", function () {

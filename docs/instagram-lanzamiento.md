@@ -154,6 +154,16 @@ https://claude.ai/artifact/WZVTANNaHxyvFbLECBBSVp
 Está pensada para tenerla abierta en el teléfono mientras publicas: copiar,
 guardar la imagen, subir. El avance se guarda en ese mismo teléfono.
 
+**Las fechas las calcula sola.** Eliges el día en que empiezas y la página
+reparte las publicaciones desde ahí, poniendo las de entre semana en la tarde
+y las del fin de semana a media mañana. Antes iban escritas a mano y quedaban
+viejas al día siguiente.
+
+El botón **"Copiar instrucciones para Metricool"** arma el texto para pegarle
+a Claude en Chrome, con las mismas fechas que ves en pantalla. Por eso se
+genera ahí y no en un archivo aparte: un prompt escrito por separado se
+desincroniza en cuanto mueves el día de inicio.
+
 Se vuelve a generar, si cambian las piezas o los textos, con:
 
     cd ~/Documents/aseada-instagram && for f in *.png; do \
